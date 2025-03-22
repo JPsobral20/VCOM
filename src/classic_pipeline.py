@@ -1,0 +1,70 @@
+import numpy as np
+import cv2
+import matplotlib.pyplot as plt
+import os
+import math
+
+image_num = 0
+
+def save_image(path, image, verbose=False):
+    if verbose:
+        cv2.imwrite(path, image)
+        print(f"Image saved to {path}")
+def get_image_num():
+    global image_num
+    return image_num
+
+def set_image_num(num):
+    global image_num
+    image_num = num
+
+def build_image_path(image_name, images_dir):
+    num = get_image_num()
+    return os.path.join(images_dir, f"{num}_{image_name}")
+
+def preprocess_image(image, output_path, verbose=False):
+    # Convert to grayscale
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    save_image(build_image_path("gray.jpg", output_path), gray, verbose)
+
+    # Apply Gaussian blur
+    blurred = cv2.GaussianBlur(gray, (15,15), 0)
+    save_image(build_image_path("blurred.jpg", output_path), blurred, verbose)
+
+    return gray, blurred
+
+def board_detection(image, output_path, verbose=False):
+    # Threshold the image using Otsu's method
+    ret, otsu = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    save_image(build_image_path("otsu.jpg", output_path), otsu, verbose)
+    
+    canny = cv2.Canny(otsu, 100, 200)
+    save_image(build_image_path("canny.jpg", output_path), canny, verbose)
+
+    dilated = cv2.dilate(canny, np.ones((3, 3), np.uint8), iterations=1)
+    save_image(build_image_path("dilated.jpg", output_path), dilated, verbose)
+
+    contours, hierarchy = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+
+def run_pipeline(image, output_path, verbose=False):
+    set_image_num(get_image_num() + 1)
+    # Preprocess image
+    gray_image, blurred_image = preprocess_image(image, output_path, verbose)
+
+    # Board detection
+    board_image = board_detection(blurred_image, output_path, verbose)
+
+    
+
+    # Square Detection
+
+    # Piece detection with bounding boxes
+
+    # Piece Classification (white or black)
+
+    # Map into 8x8 grid
+
+    # Output data
+    output_data = {}
+    return output_data
