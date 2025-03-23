@@ -67,7 +67,7 @@ def square_detection(blurred_image, gray_image, output_path, verbose=False):
     
     # Apply adaptive Gaussian thresholding to CLAHE image
     blurred_clahe = cv2.GaussianBlur(clahe_image, (5, 5), 0)
-    save_image(build_image_path("adaptive_clahe.jpg", output_path), blurred_clahe, verbose)
+    save_image(build_image_path("blurred_clahe.jpg", output_path), blurred_clahe, verbose)
     
     # Apply Cannny edge detection
     canny = cv2.Canny(blurred_clahe, 100, 200)
