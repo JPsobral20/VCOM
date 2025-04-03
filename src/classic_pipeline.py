@@ -194,6 +194,8 @@ def board_detection(image, output_path, verbose=False):
     save_image(build_image_path("warped.jpg", output_path), warped, verbose)
 
     warped, rotation = find_rotation(warped, output_path, verbose)    
+
+    return warped, M, rotation
     
 def square_detection(blurred_image, gray_image, output_path, verbose=False):
 
@@ -254,7 +256,7 @@ def run_pipeline(image, output_path, verbose=False):
     gray_image, blurred_image = preprocess_image(image, output_path, verbose)
 
     # Board detection
-    board_image = board_detection(blurred_image, output_path, verbose)
+    board_image, M, rotation = board_detection(blurred_image, output_path, verbose)
 
     # Square Detection (INCOMPLETE)
     # square_image = square_detection(blurred_image, gray_image, output_path, verbose)
