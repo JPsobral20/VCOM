@@ -24,3 +24,10 @@ Deliverables:
     ‣ Short report (2 pages max) presenting the methodology and some results
     ‣ Python script (only one file)
 Deadline: April, 14 (23:59 AoE)
+
+## How to run
+```python
+python main.py --input=<path_to_input_file>
+```
+Default input file is `./data/input.json`
+Images referencered in the input file should be placed in 'images' folder.

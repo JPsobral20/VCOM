@@ -51,6 +51,7 @@ def find_rotation(warped, output_path, verbose=False):
 
     grid_size = 70
     half_window = grid_size // 2
+    epsilon = 0.3
 
     corners = [
         [half_window, half_window, cv2.ROTATE_90_COUNTERCLOCKWISE],
@@ -58,27 +59,28 @@ def find_rotation(warped, output_path, verbose=False):
         [half_window, new_thresh.shape[0] - half_window, None],
         [new_thresh.shape[1] - half_window, new_thresh.shape[0] - half_window, cv2.ROTATE_90_CLOCKWISE]
     ]
+    while epsilon < 0.8:
+        for corner in corners:
+            center_x, center_y, rotation = corner
+            x_start, x_end = max(0, center_x - half_window), min(new_thresh.shape[1], center_x + half_window)
+            y_start, y_end = max(0, center_y - half_window), min(new_thresh.shape[0], center_y + half_window)
+            window = new_thresh[y_start:y_end, x_start:x_end]
+            pixel_sum = np.sum(window)
+            thresh_value = grid_size * grid_size * epsilon
 
-    for corner in corners:
-        center_x, center_y, rotation = corner
-        x_start, x_end = max(0, center_x - half_window), min(new_thresh.shape[1], center_x + half_window)
-        y_start, y_end = max(0, center_y - half_window), min(new_thresh.shape[0], center_y + half_window)
-        window = new_thresh[y_start:y_end, x_start:x_end]
-        pixel_sum = np.sum(window)
-        thresh_value = grid_size * grid_size * 0.6
-
-        if (pixel_sum < thresh_value):        
-            if verbose:
-                print("Pixel sum:", pixel_sum)
-                print("Threshold value:", thresh_value)
-                print(x_start, x_end, y_start, y_end)
-            if rotation is not None:
-                warped = cv2.rotate(warped, rotation)
-                save_image(build_image_path("warped_rotated.jpg", output_path), warped, verbose)
-                return warped, rotation
-            else:
-                save_image(build_image_path("warped_rotated.jpg", output_path), warped, verbose)
-                return warped, None
+            if (pixel_sum < thresh_value):        
+                if verbose:
+                    print("Pixel sum:", pixel_sum)
+                    print("Threshold value:", thresh_value)
+                    print(x_start, x_end, y_start, y_end)
+                if rotation is not None:
+                    warped = cv2.rotate(warped, rotation)
+                    save_image(build_image_path("warped_rotated.jpg", output_path), warped, verbose)
+                    return warped, rotation
+                else:
+                    save_image(build_image_path("warped_rotated.jpg", output_path), warped, verbose)
+                    return warped, None
+        epsilon += 0.05
     
     return None, None
 
@@ -94,7 +96,7 @@ def board_detection(image, output_path, verbose=False):
     color = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
 
     # Hough Transform
-    lines = cv2.HoughLinesP(canny, 1, 1*np.pi/180, 100, minLineLength=100, maxLineGap=120)
+    lines = cv2.HoughLinesP(canny, 1, 1*np.pi/180, 100, minLineLength=100, maxLineGap=30)
     line_image = np.zeros_like(image)
     for line in lines:
         x1, y1, x2, y2 = line[0]
@@ -116,16 +118,11 @@ def board_detection(image, output_path, verbose=False):
         for j in range(i + 1, len(horizontal_lines)):
             x3, y3, x4, y4 = horizontal_lines[j][0]
 
-    
-
     # Draw lines
     for line in horizontal_lines:
         x1, y1, x2, y2 = line[0]
-        cv2.line(color, (x1, y1), (x2, y2), (0, 255, 0), 2)
     for line in vertical_lines:
         x1, y1, x2, y2 = line[0]
-        cv2.line(color, (x1, y1), (x2, y2), (255, 0, 0), 2)
-    save_image(build_image_path("lines_separated.jpg", output_path), color, verbose)
 
     # Get line intersections
     points = []
@@ -144,28 +141,11 @@ def board_detection(image, output_path, verbose=False):
         cv2.circle(color, tuple(point), 5, (0, 0, 255))
     save_image(build_image_path("points.jpg", output_path), color, verbose)
     
-    # percentage_w = 0.05
-    # percentage_h = 0.05
-
-    # # Remove points that are too close to border of the image
-    # h, w = image.shape
-    # for i in range(len(points)):
-    #     x, y = points[i]
-    #     if x < percentage_w * w or x > (1 - percentage_w) * w or y < percentage_h * h or y > (1 - percentage_h) * h:
-    #         points[i] = None
-    # points = [p for p in points if p is not None]
-
-    # points = np.array(points)
-    # # draw points
-    # for point in points:
-    #     cv2.circle(color, tuple(point), 5, (0, 0, 255))
-    # save_image(build_image_path("points.jpg", output_path), color, verbose)
-
     points = np.array(points)
     # Find the four corners of the board
     if len(points) < 4:
         print("Not enough points found")
-        return None
+        return None, None, None
     square = cv2.convexHull(points, clockwise=True)
     square = square.reshape(-1, 2)
     color = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
