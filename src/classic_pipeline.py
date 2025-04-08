@@ -388,11 +388,11 @@ def board_detection(image, hsv, output_path, verbose=False):
     #         new_vertical_lines.append(line)
     # vertical_lines = new_vertical_lines 
     line_image = np.zeros_like(image)
-    # for line in horizontal_lines:
-    #     rho, theta = line[0]
-    #     x1, y1 = line[1]
-    #     x2, y2 = line[2]
-    #     cv2.line(line_image, (x1, y1), (x2, y2), 255, 2)
+    for line in horizontal_lines:
+        rho, theta = line[0]
+        x1, y1 = line[1]
+        x2, y2 = line[2]
+        cv2.line(line_image, (x1, y1), (x2, y2), 255, 2)
     for line in vertical_lines:
         rho, theta = line[0]
         x1, y1 = line[1]
