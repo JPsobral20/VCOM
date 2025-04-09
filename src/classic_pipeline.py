@@ -543,13 +543,11 @@ def square_detection(image, dilated, output_path, verbose=False):
     # Step 2: Filter lines by length and margin
     lines = []
     if raw_lines is not None:
-        min_length = min(height, width) * 0.2
 
         for line in raw_lines:
             x1, y1, x2, y2 = line[0]
             length = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
             if (
-                min_length < length and
                 margin <= min(x1, x2) <= width - margin and
                 margin <= min(y1, y2) <= height - margin and
                 margin <= max(x1, x2) <= width - margin and
@@ -560,7 +558,7 @@ def square_detection(image, dilated, output_path, verbose=False):
     if verbose:
         filtered_debug = image.copy()
         for x1, y1, x2, y2 in lines:
-            cv2.line(filtered_debug, (x1, y1), (x2, y2), (255, 0, 0), 2)
+            cv2.line(filtered_debug, (x1, y1), (x2, y2), (0, 255, 0), 2)
         save_image(build_image_path("___filtered_lines.jpg", output_path), filtered_debug, verbose)
 
     if not lines:
@@ -568,15 +566,27 @@ def square_detection(image, dilated, output_path, verbose=False):
             print("No valid lines detected.")
         return None
 
-    # Step 3: Separate into horizontal and vertical
+    # Step 3: Separate into horizontal and vertical with min distance filtering
     horizontal_lines = []
     vertical_lines = []
 
+    min_distance = 100
+
     for x1, y1, x2, y2 in lines:
         if is_horizontal(x1, y1, x2, y2):
-            horizontal_lines.append((y1 + y2) // 2)
+            center_y = (y1 + y2) // 2
+
+            # Check distance from existing horizontal lines
+            if all(abs(center_y - existing_y) >= min_distance for existing_y in horizontal_lines):
+                horizontal_lines.append(center_y)
+
         elif is_vertical(x1, y1, x2, y2):
-            vertical_lines.append((x1 + x2) // 2)
+            center_x = (x1 + x2) // 2
+
+            # Check distance from existing vertical lines
+            if all(abs(center_x - existing_x) >= min_distance for existing_x in vertical_lines):
+                vertical_lines.append(center_x)
+
 
     # Step 4: Filter and select 9 lines
     horizontal_lines = get_best_spaced_lines(filter_close_lines(horizontal_lines), expected=9)
