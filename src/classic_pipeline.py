@@ -485,7 +485,7 @@ def square_detection_processed(rotation_image_warped, output_path, verbose=False
     dilated = cv2.dilate(canny, np.ones((3, 3), np.uint8), iterations=1)
     save_image(build_image_path("dilated_2.jpg", output_path), dilated, verbose)
 
-    return clahe_image, canny, dilated
+    return clahe_image, blurred_clahe, canny, dilated
     
     
 def square_detection(image, dilated, output_path, verbose=False):
@@ -654,15 +654,17 @@ def square_detection(image, dilated, output_path, verbose=False):
 ### PIECE DETECTION ### 
 
 # morphological closing is a dilation operation followed by an erosion operation, which fills in any space between the edges. -> see: https://docs.opencv.org/4.x/d9/d61/tutorial_py_morphological_ops.html
-def method_a(square_detection_canny, kernel): # this should receive the canny from square detection
+def method_a(square_detection_canny, kernel): 
     closed_edges = cv2.morphologyEx(square_detection_canny, cv2.MORPH_CLOSE, kernel)
 
     return closed_edges
 
 # applie morphological closing to the contrasted image before applying Canny edge detection and dilation
-def method_b(gray_image, kernel): 
-    closed_edges = cv2.morphologyEx(gray_image, cv2.MORPH_CLOSE, kernel)
-    canny = cv2.Canny(closed_edges, 100, 200) 
+def method_b(board_image, kernel): 
+    closed_edges = cv2.morphologyEx(board_image, cv2.MORPH_CLOSE, kernel)
+
+    blurred = cv2.GaussianBlur(closed_edges, (5, 5), 0)
+    canny = cv2.Canny(blurred, 100, 200) 
     dilated = cv2.dilate(canny, np.ones((3, 3), np.uint8), iterations=1)
 
     return dilated
@@ -671,34 +673,60 @@ def method_b(gray_image, kernel):
 # empirically determined threshold to determine if there is a piece present or not. A parameter sweep
 # in increments of 10 was conducted to find a suitable value. Under standard lighting conditions, a
 # threshold value of 70 out of 255 was suitable
-def piece_positions(gray_image, squares, threshold=70):
+def piece_positions(board_image, squares, raw_image, threshold=17):
     piece_positions = []
     for square in squares:
-        mask = np.zeros_like(gray_image)
-        cv2.drawContours(mask, [square], -1, 255, -1)
-        avg_intensity = cv2.mean(gray_image, mask=mask)[0]
-        if avg_intensity < threshold: # there's a piece
-            # take the intensity of the centroid of the square from the original image to determine whether the piece is white or black based on another preset threshold
-            cx, cy = np.mean(square, axis=0)[0]
-            piece_color = "black" if gray_image[int(cy), int(cx)] < 128 else "white"
+        contour = np.array(square, dtype=np.int32).reshape((-1, 1, 2))
+        
+        mask = np.zeros_like(board_image, dtype=np.uint8)
+        cv2.drawContours(mask, [contour], -1, 255, -1)
+        
+        avg_intensity = cv2.mean(board_image, mask=mask)[0]
+        
+        if avg_intensity > threshold:
+            centroid = np.mean(square, axis=0)
+            cx, cy = centroid.astype(int)
+            
+            if raw_image is not None:
+                pixel_value = raw_image[cy, cx]
+                piece_color = "black" if pixel_value < 128 else "white"
+            else:
+                piece_color = "unknown"
+
             piece_positions.append((cx, cy, piece_color))
+    
     return piece_positions
 
 # i need to somehow get square_detection_canny
-def piece_detection(gray_image, square_detection_canny): 
+def piece_detection(board_image, square_detection_canny, squares, raw_image): 
     kernel = np.ones((5,5),np.uint8) 
-    method_a = method_a(square_detection_canny, kernel)
-    method_b = method_b(gray_image, kernel)
+    edges_method_a = method_a(square_detection_canny, kernel)
+    edges_method_b = method_b(board_image, kernel)
 
     # merge the methods
-    merged_methods = cv2.bitwise_and(method_a, method_b)
+    merged_methods = cv2.bitwise_and(edges_method_a, edges_method_b)
 
-    # square detection with merged edges
-    squares = square_detection(merged_methods) # i'm not sure what to give to square dection, i need your help sobral
+    piece_position = piece_positions(merged_methods, squares, raw_image)
 
-    piece_positions = piece_positions(gray_image, squares)
+    return piece_position, merged_methods
 
-    return piece_positions
+def visualize_piece_positions(board_image, piece_positions, output_path, verbose=False):
+    # Convert grayscale to BGR so we can draw in color
+    if len(board_image.shape) == 2:
+        display_img = cv2.cvtColor(board_image, cv2.COLOR_GRAY2BGR)
+    else:
+        display_img = board_image.copy()
+    
+    for cx, cy, piece_color in piece_positions:
+        color = (0, 0, 0) if piece_color == "black" else (255, 255, 255)
+        text_color = (255, 255, 255) if piece_color == "black" else (0, 0, 0)
+        
+        # Draw a circle at the piece position
+        cv2.circle(display_img, (int(cx), int(cy)), 10, color, -1)
+        cv2.putText(display_img, piece_color, (int(cx) - 20, int(cy) - 15),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, text_color, 1, cv2.LINE_AA)
+
+    save_image(build_image_path("detected_pieces.jpg", output_path), display_img, verbose)
 
 ### PIECE DETECTION ### 
 
@@ -711,13 +739,14 @@ def run_pipeline(image, output_path, verbose=False):
     board_image, M, rotation = board_detection(blurred_image, gray_image, hsv_image, output_path, verbose)
 
     # Square Detection
-    clahe, canny, dilated = square_detection_processed(board_image, output_path, verbose)
+    clahe, blurred_clahe, canny, dilated = square_detection_processed(board_image, output_path, verbose)
     squares = square_detection(board_image, dilated, output_path, verbose)
 
     # Piece detection with bounding boxes
 
     # Piece Classification (white or black)
-    # pieces = piece_detection(gray, canny, squares)
+    pieces, merged_methods = piece_detection(clahe, canny, squares, board_image)
+    visualize_piece_positions(board_image, pieces, output_path, verbose=True)
 
     # Map into 8x8 grid
 
