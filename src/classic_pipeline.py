@@ -210,7 +210,7 @@ def filter_lines(lines, image_shape, horizontal=True, threshold=50):
 
     return unique_lines
 
-def board_detection(image, hsv, output_path, verbose=False):
+def board_detection(image, gray, hsv, output_path, verbose=False):
     saturation = hsv[:, :, 1]
     saturation_blurred = cv2.GaussianBlur(saturation, (31, 31), 0)
     mask = cv2.inRange(saturation_blurred, 0, 20)
@@ -456,7 +456,7 @@ def board_detection(image, hsv, output_path, verbose=False):
     dst_points = np.array([[0, 1000], [1000, 1000], [1000, 0], [0, 0]], dtype="float32")
     # Perform the perspective transform
     M = cv2.getPerspectiveTransform(square.astype("float32"), dst_points)
-    warped = cv2.warpPerspective(image, M, (1000, 1000))
+    warped = cv2.warpPerspective(gray, M, (1000, 1000))
     save_image(build_image_path("warped.jpg", output_path), warped, verbose)
 
     warped, rotation = find_rotation(warped, output_path, verbose)    
@@ -559,7 +559,7 @@ def run_pipeline(image, output_path, verbose=False):
     gray_image, blurred_image, hsv_image = preprocess_image(image, output_path, verbose)
 
     # Board detection
-    board_image, M, rotation = board_detection(blurred_image, hsv_image, output_path, verbose)
+    board_image, M, rotation = board_detection(blurred_image, gray_image, hsv_image, output_path, verbose)
 
     # # Square Detection (INCOMPLETE)
     # clahe, canny, dilated = square_detection_processed(gray_image, output_path, verbose)
