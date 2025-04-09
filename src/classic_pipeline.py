@@ -463,49 +463,36 @@ def board_detection(image, gray, hsv, output_path, verbose=False):
 
     return warped, M, rotation
     
-def square_detection_processed(gray_image, output_path, verbose=False):
+def square_detection_processed(rotation_image_warped, output_path, verbose=False):
     # Apply CLAHE to enhance contrast
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    clahe_image = clahe.apply(gray_image)
+    clahe_image = clahe.apply(rotation_image_warped)
     save_image(build_image_path("clahe.jpg", output_path), clahe_image, verbose)
     
     # Apply adaptive Gaussian thresholding to CLAHE image
     blurred_clahe = cv2.GaussianBlur(clahe_image, (5, 5), 0)
     save_image(build_image_path("blurred_clahe.jpg", output_path), blurred_clahe, verbose)
-    
-    # Apply Cannny edge detection
+
+    # Apply Canny edge detection
     canny = cv2.Canny(blurred_clahe, 100, 200)
     save_image(build_image_path("canny_2.jpg", output_path), canny, verbose)
-    
-    # Apply dilation
+
+    # Apply dilation to strengthen edges
     dilated = cv2.dilate(canny, np.ones((3, 3), np.uint8), iterations=1)
     save_image(build_image_path("dilated_2.jpg", output_path), dilated, verbose)
-    
+
     return clahe_image, canny, dilated
     
     
-def square_detection(dilated, output_path, verbose=False):
-    # Edge detection
-    edges = cv2.Canny(dilated, 50, 150)
-    
-    # Hough Line Transform to detect lines
-    lines = cv2.HoughLinesP(edges, 1, np.pi/180, 100, minLineLength=100, maxLineGap=10)
+def square_detection(image, dilated, output_path, verbose=False):
+    def is_vertical(x1, y1, x2, y2, tolerance_deg=10):
+        angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
+        return abs(angle - 90) < tolerance_deg or abs(angle + 90) < tolerance_deg
 
-    if lines is None:
-        print("No lines detected.")
-        return None
+    def is_horizontal(x1, y1, x2, y2, tolerance_deg=10):
+        angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
+        return abs(angle) < tolerance_deg or abs(angle - 180) < tolerance_deg
 
-    horizontal_lines = []
-    vertical_lines = []
-
-    for line in lines:
-        x1, y1, x2, y2 = line[0]
-        if abs(y1 - y2) < abs(x1 - x2):  # Horizontal line
-            horizontal_lines.append((y1 + y2) // 2)
-        else:  # Vertical line
-            vertical_lines.append((x1 + x2) // 2)
-
-    # Remove near-duplicates (within threshold)
     def filter_close_lines(lines, threshold=10):
         lines = sorted(lines)
         filtered = []
@@ -514,14 +501,102 @@ def square_detection(dilated, output_path, verbose=False):
                 filtered.append(line)
         return filtered
 
-    horizontal_lines = filter_close_lines(horizontal_lines)
-    vertical_lines = filter_close_lines(vertical_lines)
+    def get_best_spaced_lines(lines, expected=9):
+        lines = sorted(lines)
+        if len(lines) < expected:
+            return lines
 
-    if len(horizontal_lines) < 9 or len(vertical_lines) < 9:
-        print("Not enough grid lines detected.")
+        best_group = lines[:expected]
+        min_variance = float("inf")
+
+        for i in range(len(lines) - expected + 1):
+            group = lines[i:i + expected]
+            spacings = [group[j+1] - group[j] for j in range(len(group)-1)]
+            mean_spacing = sum(spacings) / len(spacings)
+            variance = sum((s - mean_spacing) ** 2 for s in spacings)
+
+            if variance < min_variance:
+                min_variance = variance
+                best_group = group
+
+        return best_group
+
+    new_image = image.copy()
+    height, width = image.shape[:2]
+    margin = int(min(height, width) * 0.05)  # slightly larger to cut off board border
+
+    # Step 1: Hough Line Transform
+    raw_lines = cv2.HoughLinesP(dilated, 1, np.pi / 180, 100, minLineLength=50, maxLineGap=10)
+    
+    if verbose:
+        debug_lines = image.copy()
+        if raw_lines is not None:
+            for line in raw_lines:
+                x1, y1, x2, y2 = line[0]
+                cv2.line(debug_lines, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        save_image(build_image_path("__HoughLinesP.jpg", output_path), debug_lines, verbose)
+
+    # Step 2: Filter lines by length and margin
+    lines = []
+    if raw_lines is not None:
+        min_length = min(height, width) * 0.2
+
+        for line in raw_lines:
+            x1, y1, x2, y2 = line[0]
+            length = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+            if (
+                min_length < length and
+                margin <= min(x1, x2) <= width - margin and
+                margin <= min(y1, y2) <= height - margin and
+                margin <= max(x1, x2) <= width - margin and
+                margin <= max(y1, y2) <= height - margin
+            ):
+                lines.append([x1, y1, x2, y2])
+
+    if verbose:
+        filtered_debug = image.copy()
+        for x1, y1, x2, y2 in lines:
+            cv2.line(filtered_debug, (x1, y1), (x2, y2), (255, 0, 0), 2)
+        save_image(build_image_path("___filtered_lines.jpg", output_path), filtered_debug, verbose)
+
+    if not lines:
+        if verbose:
+            print("No valid lines detected.")
         return None
 
-    # Compute intersections
+    # Step 3: Separate into horizontal and vertical
+    horizontal_lines = []
+    vertical_lines = []
+
+    for x1, y1, x2, y2 in lines:
+        if is_horizontal(x1, y1, x2, y2):
+            horizontal_lines.append((y1 + y2) // 2)
+        elif is_vertical(x1, y1, x2, y2):
+            vertical_lines.append((x1 + x2) // 2)
+
+    # Step 4: Filter and select 9 lines
+    horizontal_lines = get_best_spaced_lines(filter_close_lines(horizontal_lines), expected=9)
+    vertical_lines = get_best_spaced_lines(filter_close_lines(vertical_lines), expected=9)
+
+    if verbose:
+        print(f"Filtered Horizontal: {horizontal_lines}")
+        print(f"Filtered Vertical:   {vertical_lines}")
+
+    if len(horizontal_lines) < 2 or len(vertical_lines) < 2:
+        if verbose:
+            print("Not enough grid lines detected.")
+        return None
+    
+    # Debugging: Draw filtered lines
+    debug_lines = image.copy()
+    for y in horizontal_lines:
+        cv2.line(debug_lines, (0, y), (width, y), (255, 0, 0), 2)
+    for x in vertical_lines:
+        cv2.line(debug_lines, (x, 0), (x, height), (0, 255, 0), 2)
+    save_image(build_image_path("____filtered_lines.jpg", output_path), debug_lines, verbose)
+    
+
+    # Step 5: Compute intersections
     intersections = []
     for y in horizontal_lines:
         row = []
@@ -529,26 +604,36 @@ def square_detection(dilated, output_path, verbose=False):
             row.append((x, y))
         intersections.append(row)
 
-    # Build squares from 4 intersection points
+    if verbose:
+        debug_intersections = image.copy()
+        for row in intersections:
+            for x, y in row:
+                cv2.circle(debug_intersections, (int(x), int(y)), 5, (0, 0, 255), -1)
+        save_image(build_image_path("_____intersections.jpg", output_path), debug_intersections, verbose)
+
+    # Step 6: Build squares
     squares = []
-    for i in range(8):
-        for j in range(8):
+    for i in range(len(horizontal_lines) - 1):
+        for j in range(len(vertical_lines) - 1):
             top_left = intersections[i][j]
-            top_right = intersections[i][j+1]
-            bottom_right = intersections[i+1][j+1]
-            bottom_left = intersections[i+1][j]
+            top_right = intersections[i][j + 1]
+            bottom_right = intersections[i + 1][j + 1]
+            bottom_left = intersections[i + 1][j]
             squares.append([top_left, top_right, bottom_right, bottom_left])
-    
-    
-    squares = [
-    [(int(x), int(y)) for (x, y) in square]
-    for square in squares
-    ]
+
+    squares = [[(int(x), int(y)) for (x, y) in square] for square in squares]
 
     if verbose:
-        print(f"Total squares detected: {len(squares)}")
+        debug_squares = image.copy()
         for square in squares:
-            print(square)
+            cv2.polylines(debug_squares, [np.array(square)], isClosed=True, color=(0, 255, 255), thickness=2)
+        save_image(build_image_path("______squares.jpg", output_path), debug_squares, verbose)
+        print(f"Total squares detected: {len(squares)}")
+        
+    # Print squares coordinates
+    for i, square in enumerate(squares):
+        print(f"Square {i}: {square}")
+    
 
     return squares
 
@@ -611,9 +696,9 @@ def run_pipeline(image, output_path, verbose=False):
     # Board detection
     board_image, M, rotation = board_detection(blurred_image, gray_image, hsv_image, output_path, verbose)
 
-    # # Square Detection (INCOMPLETE)
-    # clahe, canny, dilated = square_detection_processed(gray_image, output_path, verbose)
-    # squares = square_detection(dilated, output_path, verbose)
+    # Square Detection
+    clahe, canny, dilated = square_detection_processed(board_image, output_path, verbose)
+    squares = square_detection(board_image, dilated, output_path, verbose)
 
     # Piece detection with bounding boxes
 
