@@ -67,30 +67,34 @@ def find_rotation(warped, output_path, verbose=False):
         [half_window, new_thresh.shape[0] - half_window, None],
         [new_thresh.shape[1] - half_window, new_thresh.shape[0] - half_window, cv2.ROTATE_90_CLOCKWISE]
     ]
-    while epsilon < 0.8:
-        for corner in corners:
-            center_x, center_y, rotation = corner
-            x_start, x_end = max(0, center_x - half_window), min(new_thresh.shape[1], center_x + half_window)
-            y_start, y_end = max(0, center_y - half_window), min(new_thresh.shape[0], center_y + half_window)
-            window = new_thresh[y_start:y_end, x_start:x_end]
-            pixel_sum = np.sum(window)
-            thresh_value = grid_size * grid_size * epsilon # If the sum of the pixels is less than epsilon% of the window size, it is considered to be the knight
+    while grid_size < 100:
+        while epsilon < 0.8:
+            for corner in corners:
+                center_x, center_y, rotation = corner
+                x_start, x_end = max(0, center_x - half_window), min(new_thresh.shape[1], center_x + half_window)
+                y_start, y_end = max(0, center_y - half_window), min(new_thresh.shape[0], center_y + half_window)
+                window = new_thresh[y_start:y_end, x_start:x_end]
+                pixel_sum = np.sum(window)
+                thresh_value = grid_size * grid_size * epsilon # If the sum of the pixels is less than epsilon% of the window size, it is considered to be the knight
 
-            if (pixel_sum < thresh_value):        
-                if verbose:
-                    print("Pixel sum:", pixel_sum)
-                    print("Threshold value:", thresh_value)
-                    print(x_start, x_end, y_start, y_end)
-                if rotation is not None:
-                    warped = cv2.rotate(warped, rotation)
-                    save_image(build_image_path("warped_rotated.jpg", output_path), warped, verbose)
-                    return warped, rotation
-                else:
-                    save_image(build_image_path("warped_rotated.jpg", output_path), warped, verbose)
-                    return warped, None
-        epsilon += 0.05
-    
-    return None, None
+                if (pixel_sum < thresh_value):        
+                    if verbose:
+                        print("Pixel sum:", pixel_sum)
+                        print("Threshold value:", thresh_value)
+                        print(x_start, x_end, y_start, y_end)
+                    if rotation is not None:
+                        warped = cv2.rotate(warped, rotation)
+                        save_image(build_image_path("warped_rotated.jpg", output_path), warped, verbose)
+                        return warped, rotation
+                    else:
+                        save_image(build_image_path("warped_rotated.jpg", output_path), warped, verbose)
+                        return warped, None
+            epsilon += 0.05
+        grid_size += 10
+        epsilon = 0.3
+    print("No rotation found")
+    save_image(build_image_path("warped_rotated.jpg", output_path), warped, verbose)
+    return warped, None
 
 def border_intersections(rho, theta, image_shape):
     height, width = image_shape
