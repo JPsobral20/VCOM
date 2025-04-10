@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import os
 import math
 
+from sklearn.cluster import DBSCAN
+
 image_num = 0
 
 def save_image(path, image, verbose=False):
@@ -651,6 +653,124 @@ def square_detection(image, dilated, output_path, verbose=False):
 
     return squares
 
+### Bounding Boxes ### 
+def point_on_square_border(pt, square, margin=5):
+    x_coords = [p[0] for p in square]
+    y_coords = [p[1] for p in square]
+
+    min_x, max_x = min(x_coords), max(x_coords)
+    min_y, max_y = min(y_coords), max(y_coords)
+
+    x, y = pt
+
+    near_left   = abs(x - min_x) <= margin
+    near_right  = abs(x - max_x) <= margin
+    near_top    = abs(y - min_y) <= margin
+    near_bottom = abs(y - max_y) <= margin
+
+    on_vertical_edge = (near_left or near_right) and (min_y - margin <= y <= max_y + margin)
+    on_horizontal_edge = (near_top or near_bottom) and (min_x - margin <= x <= max_x + margin)
+
+    return on_vertical_edge or on_horizontal_edge
+
+def remove_points_on_square_borders(points, squares, margin=5):
+    filtered = []
+    for pt in points:
+        is_on_border = False
+        for square in squares:
+            if point_on_square_border(pt, square, margin):
+                is_on_border = True
+                break
+        if not is_on_border:
+            filtered.append(pt)
+    return np.array(filtered, dtype=np.float32)
+
+def bounding_boxes_corner_func(image, gray, blurred, board, squares, output_path, verbose):
+    board_copy = board.copy()
+
+    ret, new_thresh_white = cv2.threshold(board_copy, 150, 255, cv2.THRESH_BINARY)
+    corners = cv2.goodFeaturesToTrack(new_thresh_white, maxCorners=500, qualityLevel=0.01, minDistance=10)
+    if corners is not None:
+        points = np.squeeze(corners, axis=1).astype(np.float32)
+        points = remove_points_on_square_borders(points, squares)
+    else:
+        points = np.array([], dtype=np.float32).reshape(0, 2)
+
+    # Optional visualization
+    image_with_corners = cv2.cvtColor(board_copy, cv2.COLOR_GRAY2BGR)
+    for pt in points:
+        x, y = pt.astype(int)
+        cv2.circle(image_with_corners, (x, y), 3, (0, 255, 0), -1)
+
+    save_image(build_image_path("corners.jpg", output_path), image_with_corners, verbose)
+
+    if len(points) == 0:
+        print("No corners detected.")
+        return []
+    
+    clustering = DBSCAN(eps=37, min_samples=5).fit(points)
+    labels = clustering.labels_
+    bounding_boxes = []
+
+    unique_labels = set(labels)
+    for label in unique_labels:
+        if label == -1:  # Noise
+            continue
+        cluster_points = points[labels == label]
+        x, y, w, h = cv2.boundingRect(cluster_points.astype(np.int32))
+        area = cv2.contourArea(cluster_points.astype(np.int32))
+        aspect_ratio = w / float(h)
+        if (50 < area and 0.1 < aspect_ratio < 1.2 and y > 25): 
+            bounding_boxes.append((x, y, x + w, y + h))
+            cv2.rectangle(board_copy, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            #text = f"Area: {int(area)}"
+            #cv2.putText(board_copy, text, (x, y -10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
+
+    ### Black Pieces ###
+    corners_b = cv2.goodFeaturesToTrack(board_copy, maxCorners=500, qualityLevel=0.01, minDistance=10)
+    if corners_b is not None:
+        points = np.squeeze(corners_b, axis=1).astype(np.float32)
+        points = remove_points_on_square_borders(points, squares)
+    else:
+        points = np.array([], dtype=np.float32).reshape(0, 2)
+
+    def is_inside_any_box(pt):
+        x, y = pt
+        for (x1, y1, x2, y2) in bounding_boxes:
+            if x1 <= x <= x2 and y1 <= y <= y2:
+                return True
+        return False
+
+    filtered_points = [pt for pt in points if not is_inside_any_box(pt)]
+
+    # Optional visualization
+    image_with_corners_b = cv2.cvtColor(board_copy, cv2.COLOR_GRAY2BGR)
+    for pt in filtered_points:
+        x, y = pt.astype(int)
+        cv2.circle(image_with_corners_b, (x, y), 3, (0, 255, 0), -1)
+
+    save_image(build_image_path("corners_B.jpg", output_path), image_with_corners_b, verbose)
+    
+    filtered_points = np.array(filtered_points)
+    clustering_b = DBSCAN(eps=37, min_samples=5).fit(filtered_points)
+    labels_b = clustering_b.labels_
+    unique_labels_b = set(labels_b)
+    for label in unique_labels_b:
+        if label == -1:  # Noise
+            continue
+        cluster_points_b = filtered_points[labels_b == label]
+        x, y, w, h = cv2.boundingRect(cluster_points_b.astype(np.int32))
+        area = cv2.contourArea(cluster_points_b.astype(np.int32))
+        aspect_ratio = w / float(h)
+        if (50 < area and 0.1 < aspect_ratio < 1.2): 
+            bounding_boxes.append((x, y, x + w, y + h))
+            cv2.rectangle(board_copy, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            #text = f"Area: {int(area)}"
+            #cv2.putText(board_copy, text, (x, y -10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
+
+    save_image(build_image_path("bounding_boxes_corner.jpg", output_path), board_copy, verbose)
+    return bounding_boxes
+
 ### PIECE DETECTION ### 
 
 # morphological closing is a dilation operation followed by an erosion operation, which fills in any space between the edges. -> see: https://docs.opencv.org/4.x/d9/d61/tutorial_py_morphological_ops.html
@@ -743,7 +863,8 @@ def run_pipeline(image, output_path, verbose=False):
     squares = square_detection(board_image, dilated, output_path, verbose)
 
     # Piece detection with bounding boxes
-
+    bounding_boxes = bounding_boxes_corner_func(image, gray_image, blurred_image, board_image, squares, output_path, verbose)
+    #bounding_boxes = bounding_boxes_segment_func(image, gray_image, blurred_image, board_image, squares, output_path, verbose)
     # Piece Classification (white or black)
     pieces, merged_methods = piece_detection(clahe, canny, squares, board_image)
     visualize_piece_positions(board_image, pieces, output_path, verbose=True)
