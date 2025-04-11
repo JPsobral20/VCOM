@@ -794,20 +794,25 @@ def method_b(board_image, kernel):
 # empirically determined threshold to determine if there is a piece present or not. A parameter sweep
 # in increments of 10 was conducted to find a suitable value. Under standard lighting conditions, a
 # threshold value of 70 out of 255 was suitable
-def piece_positions(board_image, squares, raw_image, threshold=17):
+def piece_positions(board_image, squares, raw_image=None, threshold=5, radius_fraction=0.3):
     piece_positions = []
+
     for square in squares:
-        contour = np.array(square, dtype=np.int32).reshape((-1, 1, 2))
-        
-        mask = np.zeros_like(board_image, dtype=np.uint8)
-        cv2.drawContours(mask, [contour], -1, 255, -1)
-        
+        centroid = np.mean(square, axis=0)
+        cx, cy = centroid.astype(int)
+
+        side_length = np.linalg.norm(np.array(square[0]) - np.array(square[1]))
+
+        radius = int(radius_fraction * side_length)
+
+        mask = np.zeros(board_image.shape[:2], dtype=np.uint8)
+        cv2.circle(mask, (cx, cy), radius, 255, -1)
+
         avg_intensity = cv2.mean(board_image, mask=mask)[0]
-        
+
         if avg_intensity > threshold:
-            centroid = np.mean(square, axis=0)
-            cx, cy = centroid.astype(int)
-            
+            cv2.circle(board_image, (cx, cy), 5, (255, 0, 0), -1)
+
             if raw_image is not None:
                 pixel_value = raw_image[cy, cx]
                 piece_color = "black" if pixel_value < 128 else "white"
@@ -815,7 +820,7 @@ def piece_positions(board_image, squares, raw_image, threshold=17):
                 piece_color = "unknown"
 
             piece_positions.append((cx, cy, piece_color))
-    
+
     return piece_positions
 
 # i need to somehow get square_detection_canny
@@ -845,8 +850,8 @@ def visualize_piece_positions(board_image, piece_positions, output_path, verbose
         # Draw a circle at the piece position
         cv2.circle(display_img, (int(cx), int(cy)), 10, color, -1)
         cv2.putText(display_img, piece_color, (int(cx) - 20, int(cy) - 15),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, text_color, 1, cv2.LINE_AA)
-
+        cv2.FONT_HERSHEY_SIMPLEX, 0.5, text_color, 1, cv2.LINE_AA)
+        
     save_image(build_image_path("detected_pieces.jpg", output_path), display_img, verbose)
 
 ### PIECE DETECTION ### 
