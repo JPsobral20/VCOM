@@ -750,8 +750,9 @@ def bounding_boxes_corner_func(image, gray, blurred, board, squares, output_path
         cv2.circle(image_with_corners_b, (x, y), 3, (0, 255, 0), -1)
 
     save_image(build_image_path("corners_B.jpg", output_path), image_with_corners_b, verbose)
-    
+
     filtered_points = np.array(filtered_points)
+
     clustering_b = DBSCAN(eps=37, min_samples=5).fit(filtered_points)
     labels_b = clustering_b.labels_
     unique_labels_b = set(labels_b)
