@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import os
 import math
 
+from sklearn.cluster import DBSCAN
+
 image_num = 0
 
 def save_image(path, image, verbose=False):
@@ -651,6 +653,254 @@ def square_detection(image, dilated, output_path, verbose=False):
 
     return squares
 
+### Bounding Boxes ### 
+def point_on_square_border(pt, square, margin=5):
+    x_coords = [p[0] for p in square]
+    y_coords = [p[1] for p in square]
+
+    min_x, max_x = min(x_coords), max(x_coords)
+    min_y, max_y = min(y_coords), max(y_coords)
+
+    x, y = pt
+
+    near_left   = abs(x - min_x) <= margin
+    near_right  = abs(x - max_x) <= margin
+    near_top    = abs(y - min_y) <= margin
+    near_bottom = abs(y - max_y) <= margin
+
+    on_vertical_edge = (near_left or near_right) and (min_y - margin <= y <= max_y + margin)
+    on_horizontal_edge = (near_top or near_bottom) and (min_x - margin <= x <= max_x + margin)
+
+    return on_vertical_edge or on_horizontal_edge
+
+def remove_points_on_square_borders(points, squares, margin=5):
+    filtered = []
+    for pt in points:
+        is_on_border = False
+        for square in squares:
+            if point_on_square_border(pt, square, margin):
+                is_on_border = True
+                break
+        if not is_on_border:
+            filtered.append(pt)
+    return np.array(filtered, dtype=np.float32)
+
+def draw_adjusted_boxes(board_copy, bounding_boxes, pieces):
+    new_bounding_boxes = []
+
+    for box in bounding_boxes:
+        x1, y1, x2, y2 = box
+        contained_pieces = [(x, y, color) for (x, y, color) in pieces if x1 <= x <= x2 and y1 <= y <= y2]
+
+        if len(contained_pieces) <= 1:
+            new_bounding_boxes.append(box)
+        else:
+            piece_coords = [(x, y) for (x, y, _) in contained_pieces]
+            piece_coords = np.array(piece_coords)
+
+            if (x2 - x1) > (y2 - y1):  # Wide box → vertical split
+                piece_coords = piece_coords[piece_coords[:, 0].argsort()]
+                mid_x = (piece_coords[0][0] + piece_coords[1][0]) // 2
+                new_bounding_boxes.append((x1, y1, mid_x, y2))
+                new_bounding_boxes.append((mid_x, y1, x2, y2))
+            else:  # Tall box → horizontal split
+                piece_coords = piece_coords[piece_coords[:, 1].argsort()]
+                mid_y = (piece_coords[0][1] + piece_coords[1][1]) // 2
+                new_bounding_boxes.append((x1, y1, x2, mid_y))
+                new_bounding_boxes.append((x1, mid_y, x2, y2))
+
+    # Draw final bounding boxes
+    output_img = board_copy.copy()
+    for (x1, y1, x2, y2) in new_bounding_boxes:
+        cv2.rectangle(output_img, (x1, y1), (x2, y2), (0, 0, 255), 2)  # Red for adjusted boxes
+
+    return output_img, new_bounding_boxes
+
+def is_mostly_outside_board(box, x_min, y_min, x_max, y_max, threshold=0.95):
+        x1, y1, x2, y2 = box
+        box_area = max(0, x2 - x1) * max(0, y2 - y1)
+
+        # Coordinates of the intersection rectangle
+        inter_x1 = max(x1, x_min)
+        inter_y1 = max(y1, y_min)
+        inter_x2 = min(x2, x_max)
+        inter_y2 = min(y2, y_max)
+
+        inter_area = max(0, inter_x2 - inter_x1) * max(0, inter_y2 - inter_y1)
+
+        outside_ratio = 1 - (inter_area / box_area) if box_area > 0 else 1
+        return outside_ratio >= threshold
+
+def is_piece_in_any_box(x, y, boxes):
+        for (x1, y1, x2, y2) in boxes:
+            if x1 <= x <= x2 and y1 <= y <= y2:
+                return True
+        return False
+
+def box_area(box):
+        x1, y1, x2, y2 = box
+        return max(0, x2 - x1) * max(0, y2 - y1)
+
+def intersection_area(box1, box2):
+    x1 = max(box1[0], box2[0])
+    y1 = max(box1[1], box2[1])
+    x2 = min(box1[2], box2[2])
+    y2 = min(box1[3], box2[3])
+    return max(0, x2 - x1) * max(0, y2 - y1)
+
+def is_mostly_inside_synthetic(box, synthetic_boxes, threshold=0.95):
+    area = box_area(box)
+    for sbox in synthetic_boxes:
+        inter = intersection_area(box, sbox)
+        if area > 0 and (inter / area) >= threshold:
+            return True
+    return False
+
+def bounding_boxes_corner_func(image, gray, blurred, board, squares, pieces, output_path, verbose):
+    board_copy = board.copy()
+    board_copy1 = board.copy()
+    board_copy3 = board.copy()
+
+    #Step 1: Define a threshold to be easy to indentify the White pieces
+    ret, new_thresh_white = cv2.threshold(board_copy, 150, 255, cv2.THRESH_BINARY)
+    #save_image(build_image_path("threshold_white.jpg", output_path), new_thresh_white, verbose)
+
+    #Step 2: Detect the corners of the White pieces
+    corners = cv2.goodFeaturesToTrack(new_thresh_white, maxCorners=500, qualityLevel=0.01, minDistance=10)
+    if corners is not None:
+        points = np.squeeze(corners, axis=1).astype(np.float32)
+        points = remove_points_on_square_borders(points, squares)
+    else:
+        points = np.array([], dtype=np.float32).reshape(0, 2)
+
+    # Optional visualization
+    image_with_corners = cv2.cvtColor(board_copy, cv2.COLOR_GRAY2BGR)
+    for pt in points:
+        x, y = pt.astype(int)
+        cv2.circle(image_with_corners, (x, y), 3, (0, 255, 0), -1)
+
+    #save_image(build_image_path("corners.jpg", output_path), image_with_corners, verbose)
+
+    if len(points) == 0:
+        print("No corners detected.")
+        return []
+    
+    #Step 3: Define the clusters
+    clustering = DBSCAN(eps=37, min_samples=5).fit(points)
+    labels = clustering.labels_
+    bounding_boxes = []
+
+    #Step 4: Added the bounding Boxes of the White pieces
+    unique_labels = set(labels)
+    for label in unique_labels:
+        if label == -1:  # Noise
+            continue
+        cluster_points = points[labels == label]
+        x, y, w, h = cv2.boundingRect(cluster_points.astype(np.int32))
+        area = cv2.contourArea(cluster_points.astype(np.int32))
+        aspect_ratio = w / float(h)
+        if (50 < area and 0.1 < aspect_ratio < 1.2 and y > 25): 
+            bounding_boxes.append((x, y, x + w, y + h))
+            cv2.rectangle(board_copy, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            #text = f"Area: {int(area)}"
+            #cv2.putText(board_copy, text, (x, y -10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
+
+    ### Black Pieces ###
+    #Step 5: Use the normal image to to detect the balck pieces corners
+    corners_b = cv2.goodFeaturesToTrack(board_copy, maxCorners=500, qualityLevel=0.01, minDistance=10)
+    if corners_b is not None:
+        points = np.squeeze(corners_b, axis=1).astype(np.float32)
+        points = remove_points_on_square_borders(points, squares)
+    else:
+        points = np.array([], dtype=np.float32).reshape(0, 2)
+
+    def is_inside_any_box(pt):
+        x, y = pt
+        for (x1, y1, x2, y2) in bounding_boxes:
+            if x1 <= x <= x2 and y1 <= y <= y2:
+                return True
+        return False
+
+    filtered_points = [pt for pt in points if not is_inside_any_box(pt)]
+
+    # Optional visualization
+    image_with_corners_b = cv2.cvtColor(board_copy, cv2.COLOR_GRAY2BGR)
+    for pt in filtered_points:
+        x, y = pt.astype(int)
+        cv2.circle(image_with_corners_b, (x, y), 3, (0, 255, 0), -1)
+
+    #save_image(build_image_path("corners_B.jpg", output_path), image_with_corners_b, verbose)
+
+    filtered_points = np.array(filtered_points)
+
+    #Step 6: Define the clusters
+    clustering_b = DBSCAN(eps=37, min_samples=5).fit(filtered_points)
+    labels_b = clustering_b.labels_
+    unique_labels_b = set(labels_b)
+
+    for label in unique_labels_b:
+        if label == -1:  # Noise
+            continue
+        cluster_points_b = filtered_points[labels_b == label]
+        x, y, w, h = cv2.boundingRect(cluster_points_b.astype(np.int32))
+        area = cv2.contourArea(cluster_points_b.astype(np.int32))
+        aspect_ratio = w / float(h)
+        if (50 < area and 0.1 < aspect_ratio < 1.2): 
+            bounding_boxes.append((x, y, x + w, y + h))
+            cv2.rectangle(board_copy, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            #text = f"Area: {int(area)}"
+            #cv2.putText(board_copy, text, (x, y -10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
+
+    #save_image(build_image_path("bounding_boxes_corner.jpg", output_path), board_copy, verbose)
+
+    final_img, adjusted_boxes = draw_adjusted_boxes(board_copy1, bounding_boxes, pieces)
+    #save_image(build_image_path("adjusted_boxes.jpg", output_path), final_img, verbose)
+
+    # Define os limites do tabuleiro
+    # Apagar as Bounding boxes fora do tabuleiro
+    board_x_min = min([pt[0] for square in squares for pt in square])
+    board_y_min = min([pt[1] for square in squares for pt in square])
+    board_x_max = max([pt[0] for square in squares for pt in square])
+    board_y_max = max([pt[1] for square in squares for pt in square])
+    
+    adjusted_boxes = [box for box in adjusted_boxes if not is_mostly_outside_board(box, board_x_min, board_y_min, board_x_max, board_y_max)]
+
+    board_copy2 = board.copy()
+
+    final_img, adjusted_boxes = draw_adjusted_boxes(board_copy2, adjusted_boxes, pieces)
+    #save_image(build_image_path("final_boxes.jpg", output_path), final_img, verbose)
+
+    # Define box size
+    # Defenir as bounding boxes que faltam usando a posição das peças
+    box_width = 70
+    box_height = 125
+    vertical_offset = 0
+
+    synthetic_boxes = []
+    for x, y, _ in pieces:
+        if not is_piece_in_any_box(x, y, adjusted_boxes):
+            half_w = box_width // 2
+            half_h = box_height // 2
+            y_centered = y - vertical_offset
+            synthetic_box = (x - half_w, y_centered - half_h, x + half_w, y_centered + half_h)
+            #synthetic_box = (x - half_w, y - half_h, x + half_w, y + half_h)
+            synthetic_boxes.append(synthetic_box)
+
+    # Optional: draw synthetic boxes (e.g., in blue)
+    for (x1, y1, x2, y2) in synthetic_boxes:
+        cv2.rectangle(final_img, (x1, y1), (x2, y2), (255, 0, 0), 2)  # Blue
+
+    #save_image(build_image_path("final_boxes_with_synthetic.jpg", output_path), final_img, verbose)
+
+    #Remover as bounding boxes que estão dentro das novas bounding boxes
+    adjusted_boxes = [box for box in adjusted_boxes if not is_mostly_inside_synthetic(box, synthetic_boxes)]
+    adjusted_boxes.extend(synthetic_boxes)
+
+    final_img_b, adjusted_boxes = draw_adjusted_boxes(board_copy3, adjusted_boxes, pieces)
+    save_image(build_image_path("final_boxes_end.jpg", output_path), final_img_b, verbose)
+
+    return adjusted_boxes
+
 ### PIECE DETECTION ### 
 
 # morphological closing is a dilation operation followed by an erosion operation, which fills in any space between the edges. -> see: https://docs.opencv.org/4.x/d9/d61/tutorial_py_morphological_ops.html
@@ -832,12 +1082,13 @@ def run_pipeline(image, output_path, verbose=False):
     clahe, blurred_clahe, canny, dilated = square_detection_processed(board_image, output_path, verbose)
     squares = square_detection(board_image, dilated, output_path, verbose)
 
-    # Piece detection with bounding boxes
-
     # Piece Classification (white or black)
     pieces, merged_methods = piece_detection(clahe, canny, squares, board_image, output_path)
     visualize_piece_positions(board_image, pieces, output_path, verbose=True)
 
+    # Piece detection with bounding boxes
+    bounding_boxes = bounding_boxes_corner_func(image, gray_image, blurred_image, board_image, squares, pieces, output_path, verbose)
+    #print(bounding_boxes)
     # Map into 8x8 grid
 
     # Output data
