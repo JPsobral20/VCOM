@@ -17,8 +17,6 @@ def application(list_of_images, mode, verbose=False, out="."):
             image = cv2.imread(image_path)
             
             num_pieces, board, bounding_boxes = classic.run_pipeline(image, output_path=out, verbose=verbose)
-            if verbose:
-                print(f"Output data: {num_pieces}, {board}, {bounding_boxes}")
             output_data.append({
                 "image": image_path,
                 "num_pieces": num_pieces,

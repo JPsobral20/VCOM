@@ -460,9 +460,9 @@ def board_detection(image, gray, hsv, output_path, verbose=False):
     warped = cv2.warpPerspective(gray, M, (1000, 1000))
     save_image(build_image_path("warped.jpg", output_path), warped, verbose)
 
-    warped, rotation = find_rotation(warped, output_path, verbose)    
+    warped_r, rotation = find_rotation(warped, output_path, verbose)    
 
-    return warped, M, rotation
+    return warped_r, M, rotation, warped
     
 def square_detection_processed(rotation_image_warped, output_path, verbose=False):
     # Apply CLAHE to enhance contrast
@@ -996,13 +996,73 @@ def get_board_matrix(squares, pieces):
 
     return board_matrix
 
+def invert_perspective_transform(image, bounding_boxes, M, rotation):
+    invert_r_ang = None
+    if rotation == cv2.ROTATE_90_CLOCKWISE:
+        invert_r_ang = 90
+    elif rotation == cv2.ROTATE_180:
+        invert_r_ang = 180
+    elif rotation == cv2.ROTATE_90_COUNTERCLOCKWISE:
+        invert_r_ang = -90
+    else:
+        invert_r_ang = 0
+
+    center = (image.shape[1] // 2, image.shape[0] // 2)
+    invert_r = cv2.getRotationMatrix2D(center, invert_r_ang, 1)
+    M_inv = np.linalg.inv(M)
+
+    bounding_boxes = np.array(bounding_boxes, dtype=np.float32)
+    bounding_boxes = bounding_boxes.reshape(-1, 2, 2)
+
+    points = bounding_boxes.reshape(-1, 2)
+    points = np.array([points]) 
+
+    rotated_points = cv2.transform(points, invert_r)
+
+    bounding_box_rotated = rotated_points[0]
+    bounding_box_rotated = bounding_box_rotated.reshape(-1, 2)
+    # make each pair of points be (x_min, y_min, x_max, y_max) and make sure htey are integers
+    rotated_points_aux = []
+    for i in range(0, len(bounding_box_rotated), 2):
+        x1, y1 = bounding_box_rotated[i]
+        x2, y2 = bounding_box_rotated[i + 1]
+
+        x_min = int(min(x1, x2))
+        y_min = int(min(y1, y2))
+        x_max = int(max(x1, x2))
+        y_max = int(max(y1, y2))
+
+        rotated_points_aux.append((x_min, y_min, x_max, y_max))
+
+    bounding_box_rotated = np.array(rotated_points_aux, dtype=np.float32)
+    bounding_box_rotated = bounding_box_rotated.reshape(-1, 2, 2)
+
+    transformed_points = cv2.perspectiveTransform(bounding_box_rotated, M_inv)
+
+    # make each pair of points be (x_min, y_min, x_max, y_max) and make sure htey are integers
+    bounding_boxes_inverted = []
+    for i in range(0, len(transformed_points), 2):
+        item = transformed_points[i]
+        x1, y1 = item[0]
+        x2, y2 = item[1]
+
+        x_min = int(min(x1, x2))
+        y_min = int(min(y1, y2))
+        x_max = int(max(x1, x2))
+        y_max = int(max(y1, y2))
+
+        bounding_boxes_inverted.append((x_min, y_min, x_max, y_max))
+
+    print("bounding_boxes_inverted", bounding_boxes_inverted)
+    return bounding_boxes_inverted, rotated_points_aux
+
 def run_pipeline(image, output_path, verbose=False):
     set_image_num(get_image_num() + 1)
     # Preprocess image
     gray_image, blurred_image, hsv_image = preprocess_image(image, output_path, verbose)
 
     # Board detection
-    board_image, M, rotation = board_detection(blurred_image, gray_image, hsv_image, output_path, verbose)
+    board_image, M, rotation, t = board_detection(blurred_image, gray_image, hsv_image, output_path, verbose)
 
     # Square Detection
     clahe, blurred_clahe, canny, dilated = square_detection_processed(board_image, output_path, verbose)
@@ -1011,10 +1071,24 @@ def run_pipeline(image, output_path, verbose=False):
     # Piece Classification (white or black)
     pieces, merged_methods = piece_detection(clahe, canny, squares, board_image)
     visualize_piece_positions(board_image, pieces, output_path, verbose=True)
+    print(pieces)
 
     # Piece detection with bounding boxes
     bounding_boxes = bounding_boxes_corner_func(image, gray_image, blurred_image, board_image, squares, pieces, output_path, verbose)
-    #print(bounding_boxes)
+
+    # Convert bounding boxes back to the original image
+    bounding_boxes, rotated_bounding_boxes = invert_perspective_transform(board_image, bounding_boxes, M, rotation)
+    # draw
+    # bounding boxes on the original image
+    for (x1, y1, x2, y2) in bounding_boxes:
+        cv2.rectangle(gray_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+    # save the image with bounding boxes
+    
+    save_image(build_image_path("bounding_boxes_inverted.jpg", output_path), gray_image, verbose)
+    
+
+    # draw the bounding boxes on the original image
+    board_copy = image.copy()
 
     board_matrix = get_board_matrix(squares, pieces)
     return len(pieces), board_matrix, []
