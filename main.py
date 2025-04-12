@@ -8,19 +8,23 @@ import cv2
 from src import classic_pipeline as classic
 
 def application(list_of_images, mode, verbose=False, out="."):
-    output_data = {}
+    output_data = []
 
     if mode == "classic":
         print("Running classic computer vision...\n")
-        for image_path in list_of_images:
+        for i, image_path in enumerate(list_of_images):
             print(f"Processing image: {image_path}")
             image = cv2.imread(image_path)
             
-            instance_output = classic.run_pipeline(image, output_path=out, verbose=verbose)
+            num_pieces, board, bounding_boxes = classic.run_pipeline(image, output_path=out, verbose=verbose)
             if verbose:
-                print(f"Output data: {instance_output}")
-            output_data[image_path] = instance_output
-            print("")
+                print(f"Output data: {num_pieces}, {board}, {bounding_boxes}")
+            output_data.append({
+                "image": image_path,
+                "num_pieces": num_pieces,
+                "board": board,
+                "detected_pieces": bounding_boxes
+            })
     elif mode == "deep":
         print("Running deep learning...")
         print("Not implemented yet.")
@@ -41,7 +45,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output",
         type=str,
-        default="./data/output.json",
+        default="./output.json",
         help="Path to the output JSON file. Path is relative to the project root directory.",
     )
 
@@ -103,7 +107,15 @@ if __name__ == "__main__":
         # Run the application
         output_data = application(list_of_images, mode, verbose, out)
 
-        
+        # Write the output data to the output JSON file
+        with open(output_file, "w") as f:
+            json.dump(output_data, f, indent=4)
+        if verbose:
+            print(f"Output data: {output_data}")
+            print(f"Output data written to {output_file}")
+    except FileNotFoundError:
+        print(f"Error: The file {input_file} was not found.")
+        sys.exit(1)        
 
     except json.JSONDecodeError:
         print(f"Error: Invalid JSON input. Unable to parse Solr response.")

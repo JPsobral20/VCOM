@@ -31,11 +31,6 @@ def preprocess_image(image, output_path, verbose=False):
 
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     save_image(build_image_path("hsv.jpg", output_path), hsv, verbose)
-    # cv2.imshow("hsv", hsv)
-    # while True:
-    #     key = cv2.waitKey(1)
-    #     if key == 27:
-    #         break
 
     # Apply Gaussian blur
     blurred = cv2.GaussianBlur(gray, (31,31), 0)
@@ -985,6 +980,22 @@ def visualize_piece_positions(board_image, piece_positions, output_path, verbose
 
 ### PIECE DETECTION ### 
 
+def check_position_inside_square(x, y, square):
+    x1, y1 = square[0]
+    x2, y2 = square[2]
+    return x1 <= x <= x2 and y1 <= y <= y2
+
+def get_board_matrix(squares, pieces):
+    board_matrix = [[0 for _ in range(8)] for _ in range(8)]
+    for i in range(len(squares)):
+        square = squares[i]
+        for j in range(len(pieces)):
+            x, y, color = pieces[j]
+            if check_position_inside_square(x, y, square):
+                board_matrix[i // 8][i % 8] = 1
+
+    return board_matrix
+
 def run_pipeline(image, output_path, verbose=False):
     set_image_num(get_image_num() + 1)
     # Preprocess image
@@ -1004,8 +1015,6 @@ def run_pipeline(image, output_path, verbose=False):
     # Piece detection with bounding boxes
     bounding_boxes = bounding_boxes_corner_func(image, gray_image, blurred_image, board_image, squares, pieces, output_path, verbose)
     #print(bounding_boxes)
-    # Map into 8x8 grid
 
-    # Output data
-    output_data = {}
-    return output_data
+    board_matrix = get_board_matrix(squares, pieces)
+    return len(pieces), board_matrix, []
