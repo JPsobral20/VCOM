@@ -685,12 +685,12 @@ def draw_adjusted_boxes(board_copy, bounding_boxes, pieces):
 
     for box in bounding_boxes:
         x1, y1, x2, y2 = box
-        contained_pieces = [(x, y, color) for (x, y, color) in pieces if x1 <= x <= x2 and y1 <= y <= y2]
+        contained_pieces = [(x, y, color, list1) for (x, y, color, list1) in pieces if x1 <= x <= x2 and y1 <= y <= y2]
 
         if len(contained_pieces) <= 1:
             new_bounding_boxes.append(box)
         else:
-            piece_coords = [(x, y) for (x, y, _) in contained_pieces]
+            piece_coords = [(x, y) for (x, y, _, list1) in contained_pieces]
             piece_coords = np.array(piece_coords)
 
             if (x2 - x1) > (y2 - y1):  # Wide box → vertical split
@@ -872,7 +872,7 @@ def bounding_boxes_corner_func(image, gray, blurred, board, squares, pieces, out
     vertical_offset = 0
 
     synthetic_boxes = []
-    for x, y, _ in pieces:
+    for x, y, _, _ in pieces:
         if not is_piece_in_any_box(x, y, adjusted_boxes):
             half_w = box_width // 2
             half_h = box_height // 2
@@ -895,6 +895,66 @@ def bounding_boxes_corner_func(image, gray, blurred, board, squares, pieces, out
     save_image(build_image_path("final_boxes_end.jpg", output_path), final_img_b, verbose)
 
     return adjusted_boxes
+
+###  New Method  ###
+def bounding_boxes_func(image, output_path, verbose):
+
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    # Define beige color range in HSV
+    lower_beige = np.array([15, 30, 100])
+    upper_beige = np.array([35, 160, 255])
+
+    #save_image(build_image_path("hsv.jpg", output_path), hsv, verbose)
+    # Create a mask for beige color
+    mask = cv2.inRange(hsv, lower_beige, upper_beige)
+
+    # Morphological operations to clean up the mask
+    kernel = np.ones((3, 3), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_DILATE, kernel)
+
+    # Find contours in the mask
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Draw bounding boxes on the original image
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        area = cv2.contourArea(cnt)
+        aspect_ratio = w / float(h)
+        if 13000 < area < 40000 and 0.1 < aspect_ratio < 1.1:  # Filter small noise
+            cv2.rectangle(image, (x, y), (x+w, y+h), (0, 255, 0), 2)
+            #text = f"Area: {int(area)}"
+            #cv2.putText(image, text, (x, y -10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
+    #save_image(build_image_path("bb.jpg", output_path), image, verbose)
+
+    # Define a dark color range in HSV for black pieces
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    lower_black = np.array([0, 0, 0])
+    upper_black = np.array([200, 255, 60])  # Adjust the V upper value to catch dark areas
+
+    # Create mask for black pieces
+    mask = cv2.inRange(hsv, lower_black, upper_black)
+
+    # Clean the mask using morphological operations
+    kernel = np.ones((3, 3), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    mask = cv2.dilate(mask, kernel, iterations=1)
+
+    # Find contours
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Draw bounding boxes on a copy of the image
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        area = cv2.contourArea(cnt)
+        aspect_ratio = w / float(h)
+        if 13000 < area < 40000 and 0.1 < aspect_ratio < 1.3:  # Filter small noise
+            cv2.rectangle(image, (x, y), (x+w, y+h), (0, 0, 255), 2)  # Red boxes
+            #text = f"Area: {int(area)}"
+            #cv2.putText(image, text, (x, y -10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
+    save_image(build_image_path("bb.jpg", output_path), image, verbose)
+    bounding_boxes = []
+    return bounding_boxes
 
 ### PIECE DETECTION ### 
 
@@ -1075,7 +1135,7 @@ def get_board_matrix(squares, pieces):
     for i in range(len(squares)):
         square = squares[i]
         for j in range(len(pieces)):
-            x, y, color = pieces[j]
+            x, y, color, _ = pieces[j]
             if check_position_inside_square(x, y, square):
                 board_matrix[i // 8][i % 8] = 1
 
@@ -1159,7 +1219,8 @@ def run_pipeline(image, output_path, verbose=False):
     print(pieces)
 
     # Piece detection with bounding boxes
-    bounding_boxes = bounding_boxes_corner_func(image, gray_image, blurred_image, board_image, squares, pieces, output_path, verbose)
+    #bounding_boxes = bounding_boxes_corner_func(image, gray_image, blurred_image, board_image, squares, pieces, output_path, verbose)
+    bounding_boxes = bounding_boxes_func(image, output_path, verbose)
 
     # Convert bounding boxes back to the original image
     bounding_boxes, rotated_bounding_boxes = invert_perspective_transform(board_image, bounding_boxes, M, rotation)
