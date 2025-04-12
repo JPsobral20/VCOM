@@ -761,9 +761,11 @@ def bounding_boxes_corner_func(image, gray, blurred, board, squares, pieces, out
     board_copy1 = board.copy()
     board_copy3 = board.copy()
 
+    #Step 1: Define a threshold to be easy to indentify the White pieces
     ret, new_thresh_white = cv2.threshold(board_copy, 150, 255, cv2.THRESH_BINARY)
     #save_image(build_image_path("threshold_white.jpg", output_path), new_thresh_white, verbose)
 
+    #Step 2: Detect the corners of the White pieces
     corners = cv2.goodFeaturesToTrack(new_thresh_white, maxCorners=500, qualityLevel=0.01, minDistance=10)
     if corners is not None:
         points = np.squeeze(corners, axis=1).astype(np.float32)
@@ -783,10 +785,12 @@ def bounding_boxes_corner_func(image, gray, blurred, board, squares, pieces, out
         print("No corners detected.")
         return []
     
+    #Step 3: Define the clusters
     clustering = DBSCAN(eps=37, min_samples=5).fit(points)
     labels = clustering.labels_
     bounding_boxes = []
 
+    #Step 4: Added the bounding Boxes of the White pieces
     unique_labels = set(labels)
     for label in unique_labels:
         if label == -1:  # Noise
@@ -802,6 +806,7 @@ def bounding_boxes_corner_func(image, gray, blurred, board, squares, pieces, out
             #cv2.putText(board_copy, text, (x, y -10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
 
     ### Black Pieces ###
+    #Step 5: Use the normal image to to detect the balck pieces corners
     corners_b = cv2.goodFeaturesToTrack(board_copy, maxCorners=500, qualityLevel=0.01, minDistance=10)
     if corners_b is not None:
         points = np.squeeze(corners_b, axis=1).astype(np.float32)
@@ -828,6 +833,7 @@ def bounding_boxes_corner_func(image, gray, blurred, board, squares, pieces, out
 
     filtered_points = np.array(filtered_points)
 
+    #Step 6: Define the clusters
     clustering_b = DBSCAN(eps=37, min_samples=5).fit(filtered_points)
     labels_b = clustering_b.labels_
     unique_labels_b = set(labels_b)
@@ -850,7 +856,8 @@ def bounding_boxes_corner_func(image, gray, blurred, board, squares, pieces, out
     final_img, adjusted_boxes = draw_adjusted_boxes(board_copy1, bounding_boxes, pieces)
     #save_image(build_image_path("adjusted_boxes.jpg", output_path), final_img, verbose)
 
-    # Define os limites do tabuleiro (ajuste conforme necessário)
+    # Define os limites do tabuleiro
+    # Apagar as Bounding boxes fora do tabuleiro
     board_x_min = min([pt[0] for square in squares for pt in square])
     board_y_min = min([pt[1] for square in squares for pt in square])
     board_x_max = max([pt[0] for square in squares for pt in square])
@@ -863,7 +870,8 @@ def bounding_boxes_corner_func(image, gray, blurred, board, squares, pieces, out
     final_img, adjusted_boxes = draw_adjusted_boxes(board_copy2, adjusted_boxes, pieces)
     #save_image(build_image_path("final_boxes.jpg", output_path), final_img, verbose)
 
-    # Define box size (adjust as needed)
+    # Define box size
+    # Defenir as bounding boxes que faltam usando a posição das peças
     box_width = 70
     box_height = 125
     vertical_offset = 0
@@ -884,6 +892,7 @@ def bounding_boxes_corner_func(image, gray, blurred, board, squares, pieces, out
 
     #save_image(build_image_path("final_boxes_with_synthetic.jpg", output_path), final_img, verbose)
 
+    #Remover as bounding boxes que estão dentro das novas bounding boxes
     adjusted_boxes = [box for box in adjusted_boxes if not is_mostly_inside_synthetic(box, synthetic_boxes)]
     adjusted_boxes.extend(synthetic_boxes)
 
