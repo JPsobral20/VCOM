@@ -79,8 +79,8 @@ def find_rotation(warped, output_path, verbose=False):
 
                 if (pixel_sum < thresh_value):        
                     if verbose:
-                        print("Pixel sum:", pixel_sum)
-                        print("Threshold value:", thresh_value)
+                        # print("Pixel sum:", pixel_sum)
+                        # print("Threshold value:", thresh_value)
                         print(x_start, x_end, y_start, y_end)
                     if rotation is not None:
                         warped = cv2.rotate(warped, rotation)
@@ -92,7 +92,7 @@ def find_rotation(warped, output_path, verbose=False):
             epsilon += 0.05
         grid_size += 10
         epsilon = 0.3
-    print("No rotation found")
+    # print("No rotation found")
     save_image(build_image_path("warped_rotated.jpg", output_path), warped, verbose)
     return warped, None
 
@@ -286,7 +286,7 @@ def board_detection(image, gray, hsv, output_path, verbose=False):
         if verbose:
             print("Median theta:", median_theta)
     else:
-        print("No lines detected.")
+        # print("No lines detected.")
         return None, None, None
 
     # Horizontal lines threshold
@@ -592,9 +592,9 @@ def square_detection(image, dilated, output_path, verbose=False):
     horizontal_lines = get_best_spaced_lines(filter_close_lines(horizontal_lines), expected=9)
     vertical_lines = get_best_spaced_lines(filter_close_lines(vertical_lines), expected=9)
 
-    if verbose:
-        print(f"Filtered Horizontal: {horizontal_lines}")
-        print(f"Filtered Vertical:   {vertical_lines}")
+    # if verbose:
+    #     print(f"Filtered Horizontal: {horizontal_lines}")
+    #     print(f"Filtered Vertical:   {vertical_lines}")
 
     if len(horizontal_lines) < 2 or len(vertical_lines) < 2:
         if verbose:
@@ -642,11 +642,11 @@ def square_detection(image, dilated, output_path, verbose=False):
         for square in squares:
             cv2.polylines(debug_squares, [np.array(square)], isClosed=True, color=(0, 255, 255), thickness=2)
         save_image(build_image_path("______squares.jpg", output_path), debug_squares, verbose)
-        print(f"Total squares detected: {len(squares)}")
+        # print(f"Total squares detected: {len(squares)}")
         
     # Print squares coordinates
-    for i, square in enumerate(squares):
-        print(f"Square {i}: {square}")
+    # for i, square in enumerate(squares):
+    #     print(f"Square {i}: {square}")
     
 
     return squares
@@ -673,9 +673,10 @@ def method_b(board_image, kernel):
 # empirically determined threshold to determine if there is a piece present or not. A parameter sweep
 # in increments of 10 was conducted to find a suitable value. Under standard lighting conditions, a
 # threshold value of 70 out of 255 was suitable
-def piece_positions(board_image, squares, raw_image=None, threshold=5, radius_fraction=0.3):
+def piece_positions(board_image, squares, raw_image=None, threshold=0.5, radius_fraction=0.3):
     piece_positions = []
 
+    square_num = 0
     for square in squares:
         centroid = np.mean(square, axis=0)
         cx, cy = centroid.astype(int)
@@ -683,11 +684,19 @@ def piece_positions(board_image, squares, raw_image=None, threshold=5, radius_fr
         side_length = np.linalg.norm(np.array(square[0]) - np.array(square[1]))
 
         radius = int(radius_fraction * side_length)
+        print("Radius", radius)
 
         mask = np.zeros(board_image.shape[:2], dtype=np.uint8)
         cv2.circle(mask, (cx, cy), radius, 255, -1)
 
+        #cv2.imshow(f"Mask for square {square_num}", mask)
+        #cv2.waitKey(0)  # Wait for key press to close window
+        #cv2.destroyAllWindows()
+
         avg_intensity = cv2.mean(board_image, mask=mask)[0]
+
+        print("Square num: ", square_num)
+        print("Average intensity: ", avg_intensity)
 
         if avg_intensity > threshold:
             cv2.circle(board_image, (cx, cy), 5, (255, 0, 0), -1)
@@ -698,12 +707,83 @@ def piece_positions(board_image, squares, raw_image=None, threshold=5, radius_fr
             else:
                 piece_color = "unknown"
 
-            piece_positions.append((cx, cy, piece_color))
+            piece_positions.append((cx, cy, piece_color, square))
+        
+        square_num += 1
 
     return piece_positions
 
+def filter_false_positives_by_color(pieces, board_image, output_path=None, verbose=False):
+    filtered_pieces = []
+
+    if len(board_image.shape) == 2:
+        visual_img = cv2.cvtColor(board_image, cv2.COLOR_GRAY2BGR)
+    else:
+        visual_img = board_image.copy()
+
+    index = 0
+    for (x, y, color, square) in pieces:
+        center_color = board_image[y, x].astype(np.int32)
+
+        x0, y0 = square[0] 
+        x_bg = int(x0 + 10)
+        y_bg = int(y0 + 10)
+
+        x1, y1 = square[1]
+        x1_bg = int(x1 - 10)
+        y1_bg = int(y1 + 10)
+
+        x2, y2 = square[2]
+        x2_bg = int(x2 - 10)
+        y2_bg = int(y2 - 10)
+
+        x3, y3 = square[3]
+        x3_bg = int(x3 + 10)
+        y3_bg = int(y3 - 10)
+
+        points = [
+            (x_bg, y_bg),
+            (x1_bg, y1_bg),
+            (x2_bg, y2_bg),
+            (x3_bg, y3_bg)
+        ]
+
+        colors = [board_image[y, x] for (x, y) in points] 
+
+        colors_np = np.array(colors)
+
+        median_color = np.median(colors_np, axis=0).astype(int)
+
+        bg_color = board_image[y_bg, x_bg].astype(np.int32)
+
+        print("Piece Number: ", index)
+        print("Center color: ", center_color)
+        print("Background color: ", median_color)
+
+        color_diff = abs(int(center_color) - int(median_color))
+
+        cv2.circle(visual_img, (x, y), 4, (255, 0, 0), -1)  
+
+        cv2.circle(visual_img, (x_bg, y_bg), 4, (0, 255, 0), -1)  
+        cv2.circle(visual_img, (x1_bg, y1_bg), 4, (0, 255, 0), -1)
+        cv2.circle(visual_img, (x2_bg, y2_bg), 4, (0, 255, 0), -1)
+        cv2.circle(visual_img, (x3_bg, y3_bg), 4, (0, 255, 0), -1)
+
+        if color_diff > 12:
+            filtered_pieces.append((x, y, color, square))
+
+        index += 1
+
+    if output_path:
+        out_path = os.path.join(build_image_path("piece_filter_visualization.jpg", output_path))
+        cv2.imwrite(out_path, visual_img)
+        if verbose:
+            print(f"[INFO] Visualization saved at: {out_path}")
+
+    return filtered_pieces
+
 # i need to somehow get square_detection_canny
-def piece_detection(board_image, square_detection_canny, squares, raw_image): 
+def piece_detection(board_image, square_detection_canny, squares, raw_image, outpath): 
     kernel = np.ones((5,5),np.uint8) 
     edges_method_a = method_a(square_detection_canny, kernel)
     edges_method_b = method_b(board_image, kernel)
@@ -713,7 +793,12 @@ def piece_detection(board_image, square_detection_canny, squares, raw_image):
 
     piece_position = piece_positions(merged_methods, squares, raw_image)
 
-    return piece_position, merged_methods
+    filtered_pieces = filter_false_positives_by_color(piece_position, raw_image, outpath, True)
+
+    print("Piece position size", len(piece_position))
+    print("Filtered pieces: ", len(filtered_pieces))
+
+    return filtered_pieces, merged_methods
 
 def visualize_piece_positions(board_image, piece_positions, output_path, verbose=False):
     # Convert grayscale to BGR so we can draw in color
@@ -722,7 +807,7 @@ def visualize_piece_positions(board_image, piece_positions, output_path, verbose
     else:
         display_img = board_image.copy()
     
-    for cx, cy, piece_color in piece_positions:
+    for cx, cy, piece_color,_ in piece_positions:
         color = (0, 0, 0) if piece_color == "black" else (255, 255, 255)
         text_color = (255, 255, 255) if piece_color == "black" else (0, 0, 0)
         
@@ -750,7 +835,7 @@ def run_pipeline(image, output_path, verbose=False):
     # Piece detection with bounding boxes
 
     # Piece Classification (white or black)
-    pieces, merged_methods = piece_detection(clahe, canny, squares, board_image)
+    pieces, merged_methods = piece_detection(clahe, canny, squares, board_image, output_path)
     visualize_piece_positions(board_image, pieces, output_path, verbose=True)
 
     # Map into 8x8 grid
