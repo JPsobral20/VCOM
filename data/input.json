@@ -1,9 +1,8 @@
 {
-    "files": [
-        "G000_IMG062.jpg",
-        "G000_IMG087.jpg",
-        "G000_IMG102.jpg",
-        "G056_IMG097.jpg"
-
+    "image_files": [
+        "images/G000_IMG062.jpg",
+        "images/G000_IMG087.jpg",
+        "images/G000_IMG102.jpg",
+        "images/G056_IMG097.jpg"
     ]
 }

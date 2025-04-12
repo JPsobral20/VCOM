@@ -7,15 +7,14 @@ import cv2
 
 from src import classic_pipeline as classic
 
-def application(list_of_images, images_dir, mode, verbose=False, out="."):
+def application(list_of_images, mode, verbose=False, out="."):
     output_data = {}
 
     if mode == "classic":
         print("Running classic computer vision...\n")
         for image_path in list_of_images:
             print(f"Processing image: {image_path}")
-            full_path = os.path.join(images_dir, image_path)
-            image = cv2.imread(full_path)
+            image = cv2.imread(image_path)
             
             instance_output = classic.run_pipeline(image, output_path=out, verbose=verbose)
             if verbose:
@@ -55,14 +54,6 @@ if __name__ == "__main__":
         help="Mode of operation. 'classic' for classic computer vision, 'deep' for deep learning.",
     )
 
-    # Add argument for images directory
-    parser.add_argument(
-        "--images",
-        type=str,
-        default="./images",
-        help="Path to the images directory. Path is relative to the project root directory.",
-    )
-
     # Add argument for verbose output
     parser.add_argument(
         "--verbose",
@@ -86,7 +77,6 @@ if __name__ == "__main__":
         input_file = args.input
         output_file = args.output
         mode = args.mode
-        images_dir = args.images
         verbose = args.verbose
         out = args.out
 
@@ -96,7 +86,6 @@ if __name__ == "__main__":
         if verbose:
             print(f"Input file: {input_file}")
             print(f"Output file: {output_file}")
-            print(f"Images directory: {images_dir}")
             print(f"Mode: {mode}")
             print(f"Verbose: {verbose}")
             print(f"Output directory: {out}")
@@ -109,10 +98,10 @@ if __name__ == "__main__":
             print(f"Input data: {input_data}")
         
         # Get the list of images
-        list_of_images = input_data["files"]
+        list_of_images = input_data["image_files"]
 
         # Run the application
-        output_data = application(list_of_images, images_dir, mode, verbose, out)
+        output_data = application(list_of_images, mode, verbose, out)
 
         
 
