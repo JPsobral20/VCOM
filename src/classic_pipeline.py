@@ -669,7 +669,7 @@ def bounding_boxes_mask_roi(image, mask_white, mask_black, output_path, verbose)
 
     mask_roi = mask_black[500:2572, 500:2572]
     #save_image(build_image_path("mask_roi.jpg", output_path), mask_roi, verbose)
-    bounding_boxes = []
+
     contours, _ = cv2.findContours(mask_roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     # Draw bounding boxes on the original image
     for cnt in contours:
