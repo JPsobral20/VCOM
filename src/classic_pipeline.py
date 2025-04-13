@@ -896,15 +896,11 @@ def bounding_boxes_corner_func(image, gray, blurred, board, squares, pieces, out
 
     return adjusted_boxes
 
-### PIECE DETECTION ### 
-
-# morphological closing is a dilation operation followed by an erosion operation, which fills in any space between the edges. -> see: https://docs.opencv.org/4.x/d9/d61/tutorial_py_morphological_ops.html
 def method_a(square_detection_canny, kernel): 
     closed_edges = cv2.morphologyEx(square_detection_canny, cv2.MORPH_CLOSE, kernel)
 
     return closed_edges
 
-# applie morphological closing to the contrasted image before applying Canny edge detection and dilation
 def method_b(board_image, kernel): 
     closed_edges = cv2.morphologyEx(board_image, cv2.MORPH_CLOSE, kernel)
 
@@ -914,10 +910,6 @@ def method_b(board_image, kernel):
 
     return dilated
 
-# We then determine the average intensity of each square in the occupancy grid, comparing it to an
-# empirically determined threshold to determine if there is a piece present or not. A parameter sweep
-# in increments of 10 was conducted to find a suitable value. Under standard lighting conditions, a
-# threshold value of 70 out of 255 was suitable
 def piece_positions(board_image, squares, raw_image=None, threshold=0.5, radius_fraction=0.3):
     piece_positions = []
 
@@ -929,7 +921,7 @@ def piece_positions(board_image, squares, raw_image=None, threshold=0.5, radius_
         side_length = np.linalg.norm(np.array(square[0]) - np.array(square[1]))
 
         radius = int(radius_fraction * side_length)
-        print("Radius", radius)
+        # print("Radius", radius)
 
         mask = np.zeros(board_image.shape[:2], dtype=np.uint8)
         cv2.circle(mask, (cx, cy), radius, 255, -1)
@@ -994,26 +986,23 @@ def filter_false_positives_by_color(pieces, board_image, output_path=None, verbo
         ]
 
         colors = [board_image[y, x] for (x, y) in points] 
-
         colors_np = np.array(colors)
-
         median_color = np.median(colors_np, axis=0).astype(int)
 
         bg_color = board_image[y_bg, x_bg].astype(np.int32)
 
-        print("Piece Number: ", index)
-        print("Center color: ", center_color)
-        print("Background color: ", median_color)
+        #print("Piece Number: ", index)
+        #print("Center color: ", center_color)
+        #print("Background color: ", median_color)
 
         color_diff = abs(int(center_color) - int(median_color))
 
         cv2.circle(visual_img, (x, y), 4, (255, 0, 0), -1)  
-
         cv2.circle(visual_img, (x_bg, y_bg), 4, (0, 255, 0), -1)  
         cv2.circle(visual_img, (x1_bg, y1_bg), 4, (0, 255, 0), -1)
         cv2.circle(visual_img, (x2_bg, y2_bg), 4, (0, 255, 0), -1)
         cv2.circle(visual_img, (x3_bg, y3_bg), 4, (0, 255, 0), -1)
-
+        
         if color_diff > 12:
             filtered_pieces.append((x, y, color, square))
 
@@ -1022,31 +1011,23 @@ def filter_false_positives_by_color(pieces, board_image, output_path=None, verbo
     if output_path:
         out_path = os.path.join(build_image_path("piece_filter_visualization.jpg", output_path))
         cv2.imwrite(out_path, visual_img)
-        if verbose:
-            print(f"[INFO] Visualization saved at: {out_path}")
 
     return filtered_pieces
 
-# i need to somehow get square_detection_canny
 def piece_detection(board_image, square_detection_canny, squares, raw_image, outpath): 
     kernel = np.ones((5,5),np.uint8) 
     edges_method_a = method_a(square_detection_canny, kernel)
     edges_method_b = method_b(board_image, kernel)
 
-    # merge the methods
     merged_methods = cv2.bitwise_and(edges_method_a, edges_method_b)
 
     piece_position = piece_positions(merged_methods, squares, raw_image)
 
     filtered_pieces = filter_false_positives_by_color(piece_position, raw_image, outpath, True)
 
-    print("Piece position size", len(piece_position))
-    print("Filtered pieces: ", len(filtered_pieces))
-
     return filtered_pieces, merged_methods
 
 def visualize_piece_positions(board_image, piece_positions, output_path, verbose=False):
-    # Convert grayscale to BGR so we can draw in color
     if len(board_image.shape) == 2:
         display_img = cv2.cvtColor(board_image, cv2.COLOR_GRAY2BGR)
     else:
@@ -1056,14 +1037,11 @@ def visualize_piece_positions(board_image, piece_positions, output_path, verbose
         color = (0, 0, 0) if piece_color == "black" else (255, 255, 255)
         text_color = (255, 255, 255) if piece_color == "black" else (0, 0, 0)
         
-        # Draw a circle at the piece position
         cv2.circle(display_img, (int(cx), int(cy)), 10, color, -1)
         cv2.putText(display_img, piece_color, (int(cx) - 20, int(cy) - 15),
         cv2.FONT_HERSHEY_SIMPLEX, 0.5, text_color, 1, cv2.LINE_AA)
         
     save_image(build_image_path("detected_pieces.jpg", output_path), display_img, verbose)
-
-### PIECE DETECTION ### 
 
 def check_position_inside_square(x, y, square):
     x1, y1 = square[0]
