@@ -468,19 +468,19 @@ def square_detection_processed(rotation_image_warped, output_path, verbose=False
     # Apply CLAHE to enhance contrast
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     clahe_image = clahe.apply(rotation_image_warped)
-    save_image(build_image_path("clahe.jpg", output_path), clahe_image, verbose)
+    save_image(build_image_path("square_detection_clahe.jpg", output_path), clahe_image, verbose)
     
     # Apply adaptive Gaussian thresholding to CLAHE image
     blurred_clahe = cv2.GaussianBlur(clahe_image, (5, 5), 0)
-    save_image(build_image_path("blurred_clahe.jpg", output_path), blurred_clahe, verbose)
+    save_image(build_image_path("square_detection_blurred_clahe.jpg", output_path), blurred_clahe, verbose)
 
     # Apply Canny edge detection
     canny = cv2.Canny(blurred_clahe, 100, 200)
-    save_image(build_image_path("canny_2.jpg", output_path), canny, verbose)
+    save_image(build_image_path("square_detection_canny_2.jpg", output_path), canny, verbose)
 
     # Apply dilation to strengthen edges
     dilated = cv2.dilate(canny, np.ones((3, 3), np.uint8), iterations=1)
-    save_image(build_image_path("dilated_2.jpg", output_path), dilated, verbose)
+    save_image(build_image_path("square_detection_dilated_2.jpg", output_path), dilated, verbose)
 
     return clahe_image, blurred_clahe, canny, dilated
     
@@ -522,22 +522,23 @@ def square_detection(image, dilated, output_path, verbose=False):
 
         return best_group
 
-    new_image = image.copy()
-    height, width = image.shape[:2]
-    margin = int(min(height, width) * 0.05)  # slightly larger to cut off board border
 
     # Step 1: Hough Line Transform
     raw_lines = cv2.HoughLinesP(dilated, 1, np.pi / 180, 100, minLineLength=50, maxLineGap=10)
     
     if verbose:
         debug_lines = image.copy()
+        debug_lines = cv2.cvtColor(debug_lines, cv2.COLOR_GRAY2BGR)
         if raw_lines is not None:
             for line in raw_lines:
                 x1, y1, x2, y2 = line[0]
-                cv2.line(debug_lines, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        save_image(build_image_path("__HoughLinesP.jpg", output_path), debug_lines, verbose)
+                cv2.line(debug_lines, (x1, y1), (x2, y2), (255, 255, 0), 2)
+        save_image(build_image_path("square_detection__HoughLinesP.jpg", output_path), debug_lines, verbose)
+
 
     # Step 2: Filter lines by length and margin
+    height, width = image.shape[:2]
+    margin = int(min(height, width) * 0.05)
     lines = []
     if raw_lines is not None:
 
@@ -554,9 +555,10 @@ def square_detection(image, dilated, output_path, verbose=False):
 
     if verbose:
         filtered_debug = image.copy()
+        filtered_debug = cv2.cvtColor(filtered_debug, cv2.COLOR_GRAY2BGR)
         for x1, y1, x2, y2 in lines:
-            cv2.line(filtered_debug, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        save_image(build_image_path("___filtered_lines.jpg", output_path), filtered_debug, verbose)
+            cv2.line(filtered_debug, (x1, y1), (x2, y2), (0, 255, 255), 2)
+        save_image(build_image_path("square_detection___filtered_lines.jpg", output_path), filtered_debug, verbose)
 
     if not lines:
         if verbose:
@@ -566,7 +568,6 @@ def square_detection(image, dilated, output_path, verbose=False):
     # Step 3: Separate into horizontal and vertical with min distance filtering
     horizontal_lines = []
     vertical_lines = []
-
     min_distance = 100
 
     for x1, y1, x2, y2 in lines:
@@ -589,22 +590,20 @@ def square_detection(image, dilated, output_path, verbose=False):
     horizontal_lines = get_best_spaced_lines(filter_close_lines(horizontal_lines), expected=9)
     vertical_lines = get_best_spaced_lines(filter_close_lines(vertical_lines), expected=9)
 
-    # if verbose:
-    #     print(f"Filtered Horizontal: {horizontal_lines}")
-    #     print(f"Filtered Vertical:   {vertical_lines}")
-
-    if len(horizontal_lines) < 2 or len(vertical_lines) < 2:
+    if len(horizontal_lines) < 9 or len(vertical_lines) < 9:
         if verbose:
             print("Not enough grid lines detected.")
         return None
     
     # Debugging: Draw filtered lines
     debug_lines = image.copy()
+    debug_lines = cv2.cvtColor(debug_lines, cv2.COLOR_GRAY2BGR)
     for y in horizontal_lines:
-        cv2.line(debug_lines, (0, y), (width, y), (255, 0, 0), 2)
+        cv2.line(debug_lines, (0, y), (width, y), (147, 112, 219), 2)
     for x in vertical_lines:
-        cv2.line(debug_lines, (x, 0), (x, height), (0, 255, 0), 2)
-    save_image(build_image_path("____filtered_lines.jpg", output_path), debug_lines, verbose)
+        cv2.line(debug_lines, (x, 0), (x, height), (255, 165, 0), 2)
+
+    save_image(build_image_path("square_detection____lines.jpg", output_path), debug_lines, verbose)
     
 
     # Step 5: Compute intersections
@@ -617,10 +616,11 @@ def square_detection(image, dilated, output_path, verbose=False):
 
     if verbose:
         debug_intersections = image.copy()
+        debug_intersections = cv2.cvtColor(debug_intersections, cv2.COLOR_GRAY2BGR)
         for row in intersections:
             for x, y in row:
                 cv2.circle(debug_intersections, (int(x), int(y)), 5, (0, 0, 255), -1)
-        save_image(build_image_path("_____intersections.jpg", output_path), debug_intersections, verbose)
+        save_image(build_image_path("square_detection_____intersections.jpg", output_path), debug_intersections, verbose)
 
     # Step 6: Build squares
     squares = []
@@ -636,15 +636,11 @@ def square_detection(image, dilated, output_path, verbose=False):
 
     if verbose:
         debug_squares = image.copy()
+        debug_squares = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
         for square in squares:
-            cv2.polylines(debug_squares, [np.array(square)], isClosed=True, color=(0, 255, 255), thickness=2)
-        save_image(build_image_path("______squares.jpg", output_path), debug_squares, verbose)
-        # print(f"Total squares detected: {len(squares)}")
+            cv2.polylines(debug_squares, [np.array(square)], isClosed=True, color=(0, 255, 0), thickness=2)
+        save_image(build_image_path("square_detection______squares.jpg", output_path), debug_squares, verbose)
         
-    # Print squares coordinates
-    # for i, square in enumerate(squares):
-    #     print(f"Square {i}: {square}")
-    
 
     return squares
 
