@@ -981,20 +981,14 @@ def run_pipeline(image, output_path, verbose=False):
     # Piece detection with bounding boxes
     #bounding_boxes = bounding_boxes_corner_func(image, gray_image, blurred_image, board_image, squares, pieces, output_path, verbose)
     bounding_boxes = bounding_boxes_func(image, output_path, verbose)
-
-    # Convert bounding boxes back to the original image
-    bounding_boxes, rotated_bounding_boxes = invert_perspective_transform(board_image, bounding_boxes, M, rotation)
-    # draw
-    # bounding boxes on the original image
-    for (x1, y1, x2, y2) in bounding_boxes:
-        cv2.rectangle(gray_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-    # save the image with bounding boxes
+    #print(bounding_boxes)
     
-    save_image(build_image_path("bounding_boxes_inverted.jpg", output_path), gray_image, verbose)
-    
-
+    converted = [
+        {"xmin": x1, "ymin": y1, "xmax": x2, "ymax": y2}
+        for (x1, y1, x2, y2) in bounding_boxes
+    ]
     # draw the bounding boxes on the original image
     board_copy = image.copy()
 
     board_matrix = get_board_matrix(squares, pieces)
-    return len(pieces), board_matrix, []
+    return len(pieces), board_matrix, converted
