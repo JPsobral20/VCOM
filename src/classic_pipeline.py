@@ -1025,8 +1025,7 @@ def visualize_piece_positions(board_image, piece_positions, output_path, verbose
         text_color = (255, 255, 255) if piece_color == "black" else (0, 0, 0)
         
         cv2.circle(display_img, (int(cx), int(cy)), 10, color, -1)
-        cv2.putText(display_img, piece_color, (int(cx) - 20, int(cy) - 15),
-        cv2.FONT_HERSHEY_SIMPLEX, 0.5, text_color, 1, cv2.LINE_AA)
+        cv2.putText(display_img, piece_color, (int(cx) - 20, int(cy) - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, text_color, 1, cv2.LINE_AA)
         
     save_image(build_image_path("detected_pieces.jpg", output_path), display_img, verbose)
 
