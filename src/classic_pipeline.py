@@ -915,14 +915,11 @@ def piece_positions(board_image, squares, raw_image=None, threshold=0.5, radius_
 
     square_num = 0
     for square in squares:
+
         centroid = np.mean(square, axis=0)
         cx, cy = centroid.astype(int)
-
         side_length = np.linalg.norm(np.array(square[0]) - np.array(square[1]))
-
         radius = int(radius_fraction * side_length)
-        # print("Radius", radius)
-
         mask = np.zeros(board_image.shape[:2], dtype=np.uint8)
         cv2.circle(mask, (cx, cy), radius, 255, -1)
 
@@ -931,9 +928,6 @@ def piece_positions(board_image, squares, raw_image=None, threshold=0.5, radius_
         #cv2.destroyAllWindows()
 
         avg_intensity = cv2.mean(board_image, mask=mask)[0]
-
-        print("Square num: ", square_num)
-        print("Average intensity: ", avg_intensity)
 
         if avg_intensity > threshold:
             cv2.circle(board_image, (cx, cy), 5, (255, 0, 0), -1)
@@ -989,12 +983,6 @@ def filter_false_positives_by_color(pieces, board_image, output_path=None, verbo
         colors_np = np.array(colors)
         median_color = np.median(colors_np, axis=0).astype(int)
 
-        bg_color = board_image[y_bg, x_bg].astype(np.int32)
-
-        #print("Piece Number: ", index)
-        #print("Center color: ", center_color)
-        #print("Background color: ", median_color)
-
         color_diff = abs(int(center_color) - int(median_color))
 
         cv2.circle(visual_img, (x, y), 4, (255, 0, 0), -1)  
@@ -1002,9 +990,9 @@ def filter_false_positives_by_color(pieces, board_image, output_path=None, verbo
         cv2.circle(visual_img, (x1_bg, y1_bg), 4, (0, 255, 0), -1)
         cv2.circle(visual_img, (x2_bg, y2_bg), 4, (0, 255, 0), -1)
         cv2.circle(visual_img, (x3_bg, y3_bg), 4, (0, 255, 0), -1)
-        
+
         if color_diff > 12:
-            filtered_pieces.append((x, y, color, square))
+            filtered_pieces.append((x, y, color))
 
         index += 1
 
@@ -1015,14 +1003,13 @@ def filter_false_positives_by_color(pieces, board_image, output_path=None, verbo
     return filtered_pieces
 
 def piece_detection(board_image, square_detection_canny, squares, raw_image, outpath): 
+   
     kernel = np.ones((5,5),np.uint8) 
     edges_method_a = method_a(square_detection_canny, kernel)
     edges_method_b = method_b(board_image, kernel)
-
     merged_methods = cv2.bitwise_and(edges_method_a, edges_method_b)
 
     piece_position = piece_positions(merged_methods, squares, raw_image)
-
     filtered_pieces = filter_false_positives_by_color(piece_position, raw_image, outpath, True)
 
     return filtered_pieces, merged_methods
@@ -1033,7 +1020,7 @@ def visualize_piece_positions(board_image, piece_positions, output_path, verbose
     else:
         display_img = board_image.copy()
     
-    for cx, cy, piece_color,_ in piece_positions:
+    for cx, cy, piece_color in piece_positions:
         color = (0, 0, 0) if piece_color == "black" else (255, 255, 255)
         text_color = (255, 255, 255) if piece_color == "black" else (0, 0, 0)
         
