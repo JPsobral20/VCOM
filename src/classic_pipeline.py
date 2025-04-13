@@ -649,6 +649,44 @@ def square_detection(image, dilated, output_path, verbose=False):
     return squares
 
 ### Bounding Boxes ### 
+def bounding_boxes_mask_roi(image, mask_white, mask_black, output_path, verbose):
+    mask_roi = mask_white[500:2572, 500:2572]
+    #save_image(build_image_path("mask_roi.jpg", output_path), mask_roi, verbose)
+    bounding_boxes = []
+    contours, _ = cv2.findContours(mask_roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # Draw bounding boxes on the original image
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        area = cv2.contourArea(cnt)
+        aspect_ratio = w / float(h)
+        x_orig = x + 500
+        y_orig = y + 500
+        if (10000 < area < 50000) and (0.1 < aspect_ratio < 1.1) and (200 < x) and (200 < y) and ((x+w) < 2872) and ((y+h) < 2872):  # Filter small noise
+            bounding_boxes.append((x_orig, y_orig, x_orig + w, y_orig + h))
+            cv2.rectangle(image, (x_orig, y_orig), (x_orig+w, y_orig+h), (0, 255, 255), 2)
+            #text = f"area: {int(area)}"
+            #cv2.putText(image, text, (x_orig, y_orig -10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
+
+    mask_roi = mask_black[500:2572, 500:2572]
+    #save_image(build_image_path("mask_roi.jpg", output_path), mask_roi, verbose)
+    bounding_boxes = []
+    contours, _ = cv2.findContours(mask_roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # Draw bounding boxes on the original image
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        area = cv2.contourArea(cnt)
+        aspect_ratio = w / float(h)
+        x_orig = x + 500
+        y_orig = y + 500
+        if (10000 < area < 50000) and (0.1 < aspect_ratio < 1.1) and (200 < x) and (200 < y) and ((x+w) < 2872) and ((y+h) < 2872):  # Filter small noise
+            bounding_boxes.append((x_orig, y_orig, x_orig + w, y_orig + h))
+            cv2.rectangle(image, (x_orig, y_orig), (x_orig+w, y_orig+h), (0, 255, 255), 2)
+            #text = f"area: {int(area)}"
+            #cv2.putText(image, text, (x_orig, y_orig -10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
+
+    save_image(build_image_path("bb_mask.jpg", output_path), image, verbose)
+    return bounding_boxes
+
 ###  New Method  ###
 def bounding_boxes_func(image, output_path, verbose):
     image_copy = image.copy()
@@ -689,16 +727,16 @@ def bounding_boxes_func(image, output_path, verbose):
     upper_black = np.array([200, 255, 60])  # Adjust the V upper value to catch dark areas
 
     # Create mask for black pieces
-    mask = cv2.inRange(hsv, lower_black, upper_black)
+    mask_black = cv2.inRange(hsv, lower_black, upper_black)
 
     #save_image(build_image_path("mask.jpg", output_path), mask, verbose)
     # Clean the mask using morphological operations
     kernel = np.ones((3, 3), np.uint8)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-    mask = cv2.dilate(mask, kernel, iterations=1)
+    mask_black = cv2.morphologyEx(mask_black, cv2.MORPH_OPEN, kernel)
+    mask_black = cv2.dilate(mask_black, kernel, iterations=1)
 
     # Find contours
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(mask_black, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     # Draw bounding boxes on a copy of the image
     for cnt in contours:
@@ -712,6 +750,8 @@ def bounding_boxes_func(image, output_path, verbose):
             #cv2.putText(image, text, (x, y -10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2, cv2.LINE_AA)
     #cv2.rectangle(image, (300, 300), (2772, 2772), (255, 0, 0), 2)
     save_image(build_image_path("bb.jpg", output_path), image, verbose)
+    if not bounding_boxes:
+        bounding_boxes = bounding_boxes_mask_roi(image, mask, mask_black, output_path, verbose)
     return bounding_boxes
 
 ### PIECE DETECTION ### 
