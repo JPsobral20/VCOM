@@ -544,7 +544,6 @@ def square_detection(image, dilated, output_path, verbose=False):
 
         for line in raw_lines:
             x1, y1, x2, y2 = line[0]
-            length = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
             if (
                 margin <= min(x1, x2) <= width - margin and
                 margin <= min(y1, y2) <= height - margin and
