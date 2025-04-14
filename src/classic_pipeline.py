@@ -749,9 +749,6 @@ def bounding_boxes_func(image, output_path, verbose):
         bounding_boxes = bounding_boxes_mask_roi(image, mask, mask_black, output_path, verbose)
     return bounding_boxes
 
-### PIECE DETECTION ### 
-
-# morphological closing is a dilation operation followed by an erosion operation, which fills in any space between the edges. -> see: https://docs.opencv.org/4.x/d9/d61/tutorial_py_morphological_ops.html
 def method_a(square_detection_canny, kernel): 
     closed_edges = cv2.morphologyEx(square_detection_canny, cv2.MORPH_CLOSE, kernel)
 
