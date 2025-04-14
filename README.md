@@ -16,5 +16,5 @@ python main.py --input=<path_to_input_file> --output=<path_to_output_file> --mod
 Default input file is `./data/input.json`
 Default output file is `./output.json`
 Default mode is `classic`
-Default verbose is `False`
+Default verbose is deactivated by default. Take care that verbose will create many files.
 Default verbose output directory is `./output`

@@ -137,7 +137,7 @@ def border_intersections(rho, theta, image_shape):
     
     return pts
 
-def filter_lines(lines, image_shape, horizontal=True, threshold=50):
+def filter_lines(lines, image_shape):
     filtered_lines = []
     for line in lines:
         rho, theta = line[0]
@@ -192,7 +192,7 @@ def board_detection(image, gray, hsv, output_path, verbose=False):
     save_image(build_image_path("mask.jpg", output_path), mask, verbose)
 
     # mix the two masks
-    mask = cv2.bitwise_and(mask, mask, mask=mask)
+    mask = cv2.bitwise_and(mask, mask, mask=saturation_mask)
     save_image(build_image_path("final_mask.jpg", output_path), mask, verbose)
 
     # Morphological operations
