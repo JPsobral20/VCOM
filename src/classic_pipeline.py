@@ -76,8 +76,8 @@ def find_rotation(warped, output_path, verbose=False):
 
                 if (pixel_sum < thresh_value):        
                     if verbose:
-                        # print("Pixel sum:", pixel_sum)
-                        # print("Threshold value:", thresh_value)
+                        print("Pixel sum:", pixel_sum)
+                        print("Threshold value:", thresh_value)
                         print(x_start, x_end, y_start, y_end)
                     if rotation is not None:
                         warped = cv2.rotate(warped, rotation)
@@ -89,7 +89,6 @@ def find_rotation(warped, output_path, verbose=False):
             epsilon += 0.05
         grid_size += 10
         epsilon = 0.3
-    # print("No rotation found")
     save_image(build_image_path("warped_rotated.jpg", output_path), warped, verbose)
     return warped, None
 
@@ -184,51 +183,23 @@ def filter_lines(lines, image_shape, horizontal=True, threshold=50):
             new_filtered_lines.append(filtered_lines[i])
     return new_filtered_lines
 
-    unique_lines = []
-    distances = []
-    for line in new_filtered_lines:
-        if not unique_lines:
-            unique_lines.append(line)
-        else:
-            last_line = unique_lines[-1]
-            dist = np.linalg.norm(np.array(line[1]) - np.array(last_line[1]))
-            dist2 = np.linalg.norm(np.array(line[2]) - np.array(last_line[2]))
-            dist_min = min(dist, dist2)
-            if dist_min > threshold:
-                unique_lines.append(line)
-                distances.append(dist_min)
-            else:
-                center = np.array([image_shape[1] // 2, image_shape[0] // 2])
-                midpoint = np.array([(line[1][0] + line[2][0]) // 2, (line[1][1] + line[2][1]) // 2])
-                dist_center_max = np.linalg.norm(midpoint - center)
-                last_line_center = np.array([(last_line[1][0] + last_line[2][0]) // 2, (last_line[1][1] + last_line[2][1]) // 2])
-                last_line_center_max = np.linalg.norm(last_line_center - center)
-
-                if dist_center_max > last_line_center_max:
-                    unique_lines[-1] = line
-                    if len(distances) > 0:
-                        distances[-1] = dist_min + distances[-1]
-
-    return unique_lines
-
 def board_detection(image, gray, hsv, output_path, verbose=False):
     saturation = hsv[:, :, 1]
     saturation_blurred = cv2.GaussianBlur(saturation, (31, 31), 0)
-    mask = cv2.inRange(saturation_blurred, 0, 20)
+    saturation_mask = cv2.inRange(saturation_blurred, 0, 20)
+    save_image(build_image_path("saturation_mask.jpg", output_path), saturation_mask, verbose)
+    ret, mask = cv2.threshold(image, 200, 255, cv2.THRESH_BINARY)
     save_image(build_image_path("mask.jpg", output_path), mask, verbose)
-    # Threshold the image using Otsu's method
-    ret, otsu = cv2.threshold(image, 200, 255, cv2.THRESH_BINARY)
-    save_image(build_image_path("otsu.jpg", output_path), otsu, verbose)
 
     # mix the two masks
-    otsu = cv2.bitwise_and(otsu, otsu, mask=mask)
-    save_image(build_image_path("otsu_mask.jpg", output_path), otsu, verbose)
+    mask = cv2.bitwise_and(mask, mask, mask=mask)
+    save_image(build_image_path("final_mask.jpg", output_path), mask, verbose)
 
     # Morphological operations
     kernel = np.ones((31, 31), np.uint8)
-    otsu = cv2.morphologyEx(otsu, cv2.MORPH_CLOSE, kernel, iterations=5)
-    save_image(build_image_path("otsu_morph.jpg", output_path), otsu, verbose)
-    num_labels, labels = cv2.connectedComponents(otsu)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=5)
+    save_image(build_image_path("mask_morph.jpg", output_path), mask, verbose)
+    num_labels, labels = cv2.connectedComponents(mask)
 
     areas = np.bincount(labels.ravel())
     cleaned = np.zeros_like(mask)
@@ -260,15 +231,6 @@ def board_detection(image, gray, hsv, output_path, verbose=False):
                     break
             else:
                 pts = border_intersections(rho, theta, image.shape)
-                # a = np.cos(theta)
-                # b = np.sin(theta)
-                # x0 = a * rho
-                # y0 = b * rho
-                # x1 = int(x0 + 5000 * (-b))
-                # y1 = int(y0 + 5000 * (a))
-                # x2 = int(x0 - 5000 * (-b))
-                # y2 = int(y0 - 5000 * (a))
-                # new_theta = np.arctan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0])
                 new_theta = theta
                 new_lines.append([[rho, new_theta], pts[0], pts[1]])
                 cv2.line(line_image, (pts[0][0], pts[0][1]), (pts[1][0], pts[1][1]), 255, 2)
@@ -343,51 +305,10 @@ def board_detection(image, gray, hsv, output_path, verbose=False):
                     vertical_lines.pop(j)
                     break
 
-
     if verbose:
         print("Horizontal lines:", len(horizontal_lines))
         print("Vertical lines:", len(vertical_lines))
     
-
-    # Remove near-duplicates (within threshold)
-    # lines_threshold = 20 # pixels
-    # filtered_horizontal_lines = filter_lines(horizontal_lines, image.shape, True, lines_threshold)
-    # filtered_vertical_lines = filter_lines(vertical_lines, image.shape, False, lines_threshold)
-    # line_image = np.zeros_like(image)
-    # for line in filtered_horizontal_lines:
-    #     rho, theta = line[0]
-    #     x1, y1 = line[1]
-    #     x2, y2 = line[2]
-    #     cv2.line(line_image, (x1, y1), (x2, y2), 255, 2)
-    # for line in filtered_vertical_lines:
-    #     rho, theta = line[0]
-    #     x1, y1 = line[1]
-    #     x2, y2 = line[2]
-    #     cv2.line(line_image, (x1, y1), (x2, y2), 255, 2)
-    # save_image(build_image_path("filtered_lines.jpg", output_path), line_image, verbose)
-    
-    # horizontal_lines = filtered_horizontal_lines
-    # vertical_lines = filtered_vertical_lines
-
-    # Remove lines with theta = to pi/2 and lines with thehta = 0
-    # print(horizontal_lines)
-    # print(vertical_lines)
-    # new_horizontal_lines = []
-    # for line in horizontal_lines:
-    #     for invalid_theta in invalid_thetas:
-    #         if abs(line[0][1] - invalid_theta) < 1e-6:
-    #             break
-    #     else:
-    #         new_horizontal_lines.append(line)
-    # horizontal_lines = new_horizontal_lines
-    # new_vertical_lines = []
-    # for line in vertical_lines:
-    #     for invalid_theta in invalid_thetas:
-    #         if abs(line[0][1] - invalid_theta) < 1e-6:
-    #             break
-    #     else:
-    #         new_vertical_lines.append(line)
-    # vertical_lines = new_vertical_lines 
     line_image = np.zeros_like(image)
     for line in horizontal_lines:
         rho, theta = line[0]
@@ -462,7 +383,7 @@ def board_detection(image, gray, hsv, output_path, verbose=False):
 
     warped_r, rotation = find_rotation(warped, output_path, verbose)    
 
-    return warped_r, M, rotation, warped
+    return warped_r, M, rotation
     
 def square_detection_processed(rotation_image_warped, output_path, verbose=False):
     # Apply CLAHE to enhance contrast
@@ -776,10 +697,6 @@ def piece_positions(board_image, squares, raw_image=None, threshold=0.5, radius_
         mask = np.zeros(board_image.shape[:2], dtype=np.uint8)
         cv2.circle(mask, (cx, cy), radius, 255, -1)
 
-        #cv2.imshow(f"Mask for square {square_num}", mask)
-        #cv2.waitKey(0)  # Wait for key press to close window
-        #cv2.destroyAllWindows()
-
         avg_intensity = cv2.mean(board_image, mask=mask)[0]
 
         if avg_intensity > threshold:
@@ -898,73 +815,13 @@ def get_board_matrix(squares, pieces):
 
     return board_matrix
 
-def invert_perspective_transform(image, bounding_boxes, M, rotation):
-    invert_r_ang = None
-    if rotation == cv2.ROTATE_90_CLOCKWISE:
-        invert_r_ang = 90
-    elif rotation == cv2.ROTATE_180:
-        invert_r_ang = 180
-    elif rotation == cv2.ROTATE_90_COUNTERCLOCKWISE:
-        invert_r_ang = -90
-    else:
-        invert_r_ang = 0
-
-    center = (image.shape[1] // 2, image.shape[0] // 2)
-    invert_r = cv2.getRotationMatrix2D(center, invert_r_ang, 1)
-    M_inv = np.linalg.inv(M)
-
-    bounding_boxes = np.array(bounding_boxes, dtype=np.float32)
-    bounding_boxes = bounding_boxes.reshape(-1, 2, 2)
-
-    points = bounding_boxes.reshape(-1, 2)
-    points = np.array([points]) 
-
-    rotated_points = cv2.transform(points, invert_r)
-
-    bounding_box_rotated = rotated_points[0]
-    bounding_box_rotated = bounding_box_rotated.reshape(-1, 2)
-    # make each pair of points be (x_min, y_min, x_max, y_max) and make sure htey are integers
-    rotated_points_aux = []
-    for i in range(0, len(bounding_box_rotated), 2):
-        x1, y1 = bounding_box_rotated[i]
-        x2, y2 = bounding_box_rotated[i + 1]
-
-        x_min = int(min(x1, x2))
-        y_min = int(min(y1, y2))
-        x_max = int(max(x1, x2))
-        y_max = int(max(y1, y2))
-
-        rotated_points_aux.append((x_min, y_min, x_max, y_max))
-
-    bounding_box_rotated = np.array(rotated_points_aux, dtype=np.float32)
-    bounding_box_rotated = bounding_box_rotated.reshape(-1, 2, 2)
-
-    transformed_points = cv2.perspectiveTransform(bounding_box_rotated, M_inv)
-
-    # make each pair of points be (x_min, y_min, x_max, y_max) and make sure htey are integers
-    bounding_boxes_inverted = []
-    for i in range(0, len(transformed_points), 2):
-        item = transformed_points[i]
-        x1, y1 = item[0]
-        x2, y2 = item[1]
-
-        x_min = int(min(x1, x2))
-        y_min = int(min(y1, y2))
-        x_max = int(max(x1, x2))
-        y_max = int(max(y1, y2))
-
-        bounding_boxes_inverted.append((x_min, y_min, x_max, y_max))
-
-    print("bounding_boxes_inverted", bounding_boxes_inverted)
-    return bounding_boxes_inverted, rotated_points_aux
-
 def run_pipeline(image, output_path, verbose=False):
     set_image_num(get_image_num() + 1)
     # Preprocess image
     gray_image, blurred_image, hsv_image = preprocess_image(image, output_path, verbose)
 
     # Board detection
-    board_image, M, rotation, t = board_detection(blurred_image, gray_image, hsv_image, output_path, verbose)
+    board_image, M, rotation = board_detection(blurred_image, gray_image, hsv_image, output_path, verbose)
 
     # Square Detection
     clahe, blurred_clahe, canny, dilated = square_detection_processed(board_image, output_path, verbose)
@@ -972,20 +829,17 @@ def run_pipeline(image, output_path, verbose=False):
 
     # Piece Classification (white or black)
     pieces, merged_methods = piece_detection(clahe, canny, squares, board_image, output_path)
-    visualize_piece_positions(board_image, pieces, output_path, verbose=True)
+    visualize_piece_positions(board_image, pieces, output_path, verbose)
     #print(pieces)
 
     # Piece detection with bounding boxes
-    #bounding_boxes = bounding_boxes_corner_func(image, gray_image, blurred_image, board_image, squares, pieces, output_path, verbose)
     bounding_boxes = bounding_boxes_func(image, output_path, verbose)
-    #print(bounding_boxes)
     
     converted = [
         {"xmin": x1, "ymin": y1, "xmax": x2, "ymax": y2}
         for (x1, y1, x2, y2) in bounding_boxes
     ]
     # draw the bounding boxes on the original image
-    board_copy = image.copy()
 
     board_matrix = get_board_matrix(squares, pieces)
     return len(pieces), board_matrix, converted

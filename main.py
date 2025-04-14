@@ -60,9 +60,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--verbose",
         action="store_true",
-        default=True,
         help="Enable verbose output.",
-    )
+    )    
 
     # Add argument for verbose output directory
     parser.add_argument(
