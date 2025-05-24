@@ -6,8 +6,9 @@ import os
 import cv2
 
 from src import classic_pipeline as classic
+from src import deep_pipeline as deep
 
-def application(list_of_images, mode, verbose=False, out="."):
+def application(list_of_images, mode, model_file="", verbose=False, out="."):
     output_data = []
 
     if mode == "classic":
@@ -25,7 +26,27 @@ def application(list_of_images, mode, verbose=False, out="."):
             })
     elif mode == "deep":
         print("Running deep learning...")
-        print("Not implemented yet.")
+        model = deep.load_model(model_file)
+        if model is None:
+            print(f"Error: Model file {model_file} could not be loaded.")
+            return []
+        for i, image_path in enumerate(list_of_images):
+            print(f"Processing image: {image_path}")
+            image = deep.load_image(image_path)
+            if image is None:
+                print(f"Error: Image {image_path} could not be loaded.")
+                output_data.append({
+                "image": image_path,
+                "num_pieces": -1,
+                })
+                continue
+            
+            num_pieces = deep.run_pipeline(image, model=model, verbose=verbose)
+            output_data.append({
+                "image": image_path,
+                "num_pieces": num_pieces,
+            })
+
     return output_data
 
 if __name__ == "__main__":
@@ -35,7 +56,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--input",
         type=str,
-        default="./data/input.json",
+        default="./data/input_deep.json",
         help="Path to the input JSON file. Path is relative to the project root directory.",
     )
 
@@ -51,7 +72,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--mode",
         type=str,
-        default="classic",
+        default="deep",
         choices=["classic", "deep"],
         help="Mode of operation. 'classic' for classic computer vision, 'deep' for deep learning.",
     )
@@ -71,6 +92,14 @@ if __name__ == "__main__":
         help="Path to the output directory. Path is relative to the project root directory.",
     )
 
+    # Add argument for model to use
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="./models/EfficientNet_B2.pth",
+        help="Name of the file with the model to use",
+    )
+
     try:
         # Parse the command-line arguments
         args = parser.parse_args()
@@ -80,6 +109,7 @@ if __name__ == "__main__":
         mode = args.mode
         verbose = args.verbose
         out = args.out
+        model_file = args.model
 
         Path(output_file).parent.mkdir(parents=True, exist_ok=True)
         Path(out).mkdir(parents=True, exist_ok=True)
@@ -90,6 +120,7 @@ if __name__ == "__main__":
             print(f"Mode: {mode}")
             print(f"Verbose: {verbose}")
             print(f"Output directory: {out}")
+            print(f"Model file: {model_file}")
         
         # Read the input JSON file
         with open(input_file, "r") as f:
@@ -102,7 +133,7 @@ if __name__ == "__main__":
         list_of_images = input_data["image_files"]
 
         # Run the application
-        output_data = application(list_of_images, mode, verbose, out)
+        output_data = application(list_of_images, mode, model_file, verbose, out)
 
         # Write the output data to the output JSON file
         with open(output_file, "w") as f:

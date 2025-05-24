@@ -11,10 +11,11 @@
 
 ## How to run
 ```python
-python main.py --input=<path_to_input_file> --output=<path_to_output_file> --mode=<classic|deep> --verbose --out=<path_to_verbose_output>
+python main.py --input=<path_to_input_file> --output=<path_to_output_file> --mode=<classic|deep> --verbose --out=<path_to_verbose_output> --model=<path_to_model>
 ```
 Default input file is `./data/input.json`
 Default output file is `./output.json`
 Default mode is `classic`
 Default verbose is deactivated by default. Take care that verbose will create many files.
 Default verbose output directory is `./output`
+Default model is `./models/EfficientNet_B2.pth`
