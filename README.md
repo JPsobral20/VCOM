@@ -15,7 +15,12 @@ python main.py --input=<path_to_input_file> --output=<path_to_output_file> --mod
 ```
 Default input file is `./data/input.json`
 Default output file is `./output.json`
-Default mode is `classic`
+Default mode is `deep`
 Default verbose is deactivated by default. Take care that verbose will create many files.
 Default verbose output directory is `./output`
-Default model is `./models/EfficientNet_B2.pth`
+Default model is `./models/MobileNet_V2_regression_base_multiclass_finetune_best_model.pth`
+
+## Task 2
+File `resize.py` contains the code used to resize the images prior to training.
+File `task2_baseline.ipynb` contains the code used to train the models and select the best one.
+File `main.py` contains the code used to run the model and complete the task. It uses the files on `src/`.

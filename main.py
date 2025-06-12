@@ -96,7 +96,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=str,
-        default="./models/EfficientNet_B2.pth",
+        default="./models/MobileNet_V2_regression_base_multiclass_finetune_best_model.pth",
         help="Name of the file with the model to use",
     )
 
